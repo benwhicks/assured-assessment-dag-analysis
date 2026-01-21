@@ -20,6 +20,7 @@ library(tidygraph)
 library(scales)
 library(patchwork)
 library(ggsci)
+library(ggokabeito)
 # library(ggpubfigs)
 #library(cowplot)
 ```
@@ -736,7 +737,6 @@ code_node_type <- function(n) {
         fl == "G" ~ "Assessment data"
     ) |> 
         factor(levels = c("Assessment data", "Learning data", "Learning design", "Teacher", "Help", "Student"))
-    return(fl)
 }
 
 ```
@@ -827,7 +827,8 @@ code_node_measurability <- function(node) {
         # Teacher
         node == "T.Act.UseAI" ~ "PO",
         node == "T.Aff.WrkLd" ~ "PO", # check this, not act with integ as L
-        str_detect(node, "^T") ~ "L"
+        str_detect(node, "^T") ~ "L",
+        node == "Assessments" ~ "DW"
     ) |> 
         factor(levels = c("DW", "O", "PO", "L"))
 }
@@ -1206,13 +1207,30 @@ This is based on the coding of the nodes into node groups.
 
 ``` {r}
 g_coarsen_dag_by_ng <- function(g){
-    new_nodes <- g %N>%
-        as_tibble() |> 
+    old_nodes <- g %N>% as_tibble()
+    
+    if (!("node_w" %in% names(old_nodes))) {
+        old_nodes <- old_nodes |> 
+            mutate(node_w = 1)
+    }
+    
+    new_nodes <- old_nodes |> 
+        mutate(measurability = code_node_measurability(name)) |> 
+        mutate(measurability_metric = case_when(
+            measurability == "DW" ~ 1,
+            measurability == "O" ~ 0.7,
+            measurability == "PO" ~ 0.4,
+            measurability == "L" ~ 0
+        )) |> 
+        mutate(weighted_measurability = measurability_metric * node_w) |> 
         mutate(name = code_node_group(name),
                node_type = code_node_type(name)) |> 
-        count(name, node_type) |> 
-        rename(node_w = n) |> 
-        mutate(measurability = code_node_measurability(name))
+        group_by(name, node_type) |> 
+        summarise(
+            node_w = sum(node_w),
+            measurability_metric = sum(weighted_measurability) / sum(node_w), 
+            .groups = "drop"
+        ) 
     
     new_edges <- g |> 
         g_edgelist() |> 
@@ -1513,6 +1531,9 @@ gcm_metrics <-
 library(scales)
 library(ggforce)
 
+hue1 <- palette.colors(3, palette = "Okabe-Ito")[[2]]
+hue2 <- palette.colors(3, palette = "Okabe-Ito")[[3]]
+
 
 p_time_and_representaion <-  
     gcm_metrics |> 
@@ -1528,6 +1549,7 @@ p_time_and_representaion <-
     geom_arc(aes(
         x0 = x_duration, 
         y0 = y_validity,
+        size = 1,
         r = 0.8,
         start = pi, 
         end = pi + 2 * p_dw * pi
@@ -1550,7 +1572,7 @@ p_time_and_representaion <-
         x = x_duration,
         y = y_validity)) +
     scale_y_continuous(
-        limits = c(30, 62),
+        limits = c(30, 61),
         breaks = c(30,40,50,60),
         labels = c("Trivially", "Simply", "Adequately", "Well"),
         name = "Representation of GCM") +
@@ -1562,29 +1584,30 @@ p_time_and_representaion <-
                breaks = range(gcm_metrics$n_adj_sets),
                # labels = c("None", )
                name = "N adjustment sets")  +
-    scale_color_manual(values = c("darkorange", "steelblue"), name = "Is DAG?") +
+    scale_color_manual(values = c(hue1, hue2), name = "Is DAG?") +
     theme_minimal() +
     # theme(legend.position = "bottom",
     #       legend.direction = "vertical") +
-    coord_fixed() +
+    coord_fixed(ratio = 1) +
     annotate("text", x = 39, y = 41, label = "Proportion of nodes visible\nin data warehouse", 
-             size = 2.5, color = "steelblue") +
+             size = 2.5, color = hue2) +
     annotate("segment", arrow = arrow(length = unit(0.2, "cm"), type = "closed"),
              x = 38.5, xend = 38.6, y = 42.2, yend = 43.5, 
-             color = "steelblue") +
+             color = hue2) +
     annotate("text", x = 33, y = 45, 
              label = "Proportion of\nobservable nodes", 
              size = 2.5, 
-             color = adjustcolor("steelblue", alpha.f = 0.8)) +
+             color = adjustcolor(hue2, alpha.f = 0.8)) +
     annotate("segment", arrow = arrow(length = unit(0.2, "cm"), type = "closed"),
              x = 36, xend = 37.5, y = 45, yend = 45, alpha = 0.8,
-             color = "steelblue") +
+             color = hue2) +
     annotate("text", x = 44, y = 47.7, 
              label = "Proportion of potentially observable nodes", 
-             size = 2.5, color = adjustcolor("steelblue", alpha.f = 0.6)) +
+             size = 2.5, color = adjustcolor(hue2, alpha.f = 0.6)) +
     annotate("segment", arrow = arrow(length = unit(0.2, "cm"), type = "closed"),
              x = 40, xend = 39.1, y = 47, yend = 46.2, alpha = 0.6,
-             color = "steelblue") 
+             color = hue2) +
+    theme(plot.margin = margin(0, 0, 0, 0))
 
 p_time_and_representaion 
 
@@ -1606,7 +1629,7 @@ geom_arc(aes(
     start = 0,                     # start at top (12 o'clock),
     end = 2*pi*measurability   # arc length based on proportion
   ),     
-  linewidth = 2, color = "steelblue") +
+  linewidth = 2, color = hue2) +
     # geom_arc(aes(r = 0.3, x0 = Modelling.duration, y0 = GCM.validity,
     #            start = 0, end = measurability * 2 * pi),
     #        linewidth = 1, color = "steelblue") +
@@ -1621,7 +1644,7 @@ geom_arc(aes(
                breaks = range(gcm_metrics$n_adj_sets),
                # labels = c("None", )
                name = "N adjustment sets")  +
-    scale_color_manual(values = c("darkorange", "lightblue"), name = "Is DAG?") +
+    scale_color_manual(values = c(hue1, hue2), name = "Is DAG?") +
     theme_minimal() +
     theme(legend.position = "bottom",
           legend.direction = "vertical")
@@ -1629,8 +1652,11 @@ geom_arc(aes(
 # Version 1
 ggsave("figures/FIG--time-modelling-and-representation.jpg", 
        plot = p_time_and_representaion,
-       width = 9, height = 6, 
+       width = 10, height = 5, 
        dpi = 900)
+ggsave("figures/FIG--time-modelling-and-representation.svg", 
+       plot = p_time_and_representaion,
+       width = 10, height = 5)
 
 # Version 2
 ```
@@ -1641,7 +1667,7 @@ As a table:
 gcm_metrics |> 
     mutate(acyclic = if_else(acyclic, "Yes, DAG", "No, contained cycles")) |> 
     arrange(desc(Modelling.duration)) |> 
-    select(Modelling.duration, GCM.validity, acyclic, n_adj_sets)
+    select(Modelling.duration, GCM.validity, acyclic, n_adj_sets, p_dw, p_o, p_po, p_l)
 ```
 
 #### Figure (OPTIONAL): Time spent with model and modelling utility - including graph similarity
@@ -1701,7 +1727,7 @@ p_time_and_representaion_with_distance <-
                # labels = c("None", )
                name = "N adjustment sets") +
     scale_alpha_continuous(range = c(0.1, 0.7), guide = "none") +
-    scale_color_manual(values = friendly_pal(n = 2, "vibrant_seven"), name = "Is DAG?") +
+    scale_color_npg(name = "Is DAG?") +
     theme_minimal() +
     theme(legend.position = "bottom",
           legend.direction = "vertical",
@@ -1710,9 +1736,9 @@ p_time_and_representaion_with_distance <-
     )
 
 p_time_and_representaion_with_distance
-ggsave("figures/FIG--time-modelling-and-representation-with-distances.jpg", 
-       width = 5, height = 4, 
-       dpi = 900)
+# ggsave("figures/FIG--time-modelling-and-representation-with-distances.jpg", 
+#        width = 5, height = 4, 
+#        dpi = 900)
 ```
 
 
@@ -1766,6 +1792,7 @@ In `r round(100*tb_edge_coherence$desc_incllude , 2)`% of the cases where a path
 ### Merging graphs
 
 ``` {r plotting-merged-graph}
+
 merged_all_graph_layout <- create_layout(merged_all_graph, layout = "sugiyama")
 merged_all_graph_layout_adjusted <- 
     merged_all_graph_layout |> 
@@ -1825,7 +1852,7 @@ plot_fine_graph_from_layout <- function(lyt, weight_nodes = TRUE) {
             
     }
     pp +
-        scale_color_manual(values = friendly_pal("vibrant_seven"), drop = FALSE) +
+        scale_colour_okabe_ito() +
         # geom_node_text(aes(label = name, size = node_w, alpha = node_w), nudge_y = -.5) +
         theme_graph() +
         scale_edge_alpha_continuous(range = c(0.15,0.8)) +
@@ -1850,6 +1877,7 @@ pMergedFineLegend <- merged_all_graph_layout_adjusted |>
            color = guide_legend(nrow = 1)) +
     theme(legend.title = element_blank())
 pMergedFineLegend
+
 pMergedFineLegendTall <- merged_all_graph_layout_adjusted |> 
     g_plot_fine() + 
     theme(legend.position = "right") +
@@ -2046,12 +2074,178 @@ merged_all_graph |>
 
 ```
 
-### Coursen graphs
+### Figure - all graphs, single highlight
+
+``` {r}
+plot_highlighted_fine_graph <- function(model = 1, LEGEND_POSITION = "none") {
+    MODEL <- paste0("s", model)
+    nodes_in_graph <- all_nodes |> 
+        filter(Model == MODEL) |> 
+        pull(name)
+    edges_in_graph <- all_edges |> 
+        filter(Model == MODEL) |> 
+        select(from, to)
+    
+    edges_in_graph_indexed <- 
+        edges_in_graph |> 
+        mutate(
+            from = match(from, merged_all_graph %N>% as_tibble() |> pull(name)),
+            to = match(to, merged_all_graph %N>% as_tibble() |> pull(name))
+        )
+    
+    g_highlight <- merged_all_graph %N>%
+        mutate(
+            node_highlight = if_else(
+                name %in% nodes_in_graph, 2, 1
+            )) %E>%
+        left_join(
+            edges_in_graph_indexed |> 
+                mutate(edge_highlight = 2)
+        ) |> 
+        mutate(edge_highlight = replace_na(edge_highlight, 1)) |> 
+        create_layout("sugiyama")
+    
+    g_highlight |>
+        ggraph() +
+        geom_edge_fan(aes(
+            # edge_linetype = factor(switched),
+            alpha = edge_highlight), 
+            strength = 0.2,
+            arrow = arrow(length = unit(1, 'mm'),
+                          type = "closed"),
+            start_cap = circle(3, 'mm'),
+            end_cap = circle(3, 'mm')) +
+        geom_node_label(
+            aes(label = nice_name, 
+                color = node_type,
+                size = node_w),
+            alpha = 0.7,
+            data = g_highlight |> 
+                filter(node_highlight == 2),
+            repel = T, max.overlaps = 30,
+            show.legend = FALSE) +
+        geom_node_point(aes(colour = node_type,
+                            size = node_w,
+                            alpha = node_highlight)) +
+        scale_size(name = "point-size", range = c(2,5)) +
+        scale_color_okabe_ito(order = c(9, 7,1, 2,3, 6, 8,5, 4)) +
+        # scale_color_npg() +
+        theme_graph() +
+        scale_edge_alpha_continuous(range = c(0.08,0.8)) +
+        scale_alpha_continuous(range = c(0.1,1.0)) +
+        # theme(legend.position = "none",
+        #       plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "pt")) +
+        theme(legend.position = LEGEND_POSITION) +
+        guides(size = "none", edge_width = "none", alpha = "none", edge_alpha = "none",
+               color = guide_legend(ncol = 1)) +
+        theme(legend.title = element_blank())
+}
+
+plot_highlighted_fine_graph(4)
+# +
+#     xlim(x_limits_fine) +
+#     ylim(y_limits_fine)
+
+
+
+plot_highlighted_coarse_graph <- function(model = 1, LEGEND_POSITION = "none") {
+    MODEL <- paste0("s", model)
+    node_groups_in_graph <- all_nodes |> 
+        filter(Model == MODEL) |> 
+        mutate(name = code_node_group(name)) |> 
+        distinct(name) |> 
+        pull(name) 
+    edges_in_coarse_graph <- all_edges |> 
+        filter(Model == MODEL) |> 
+        select(from, to) |> 
+        mutate(across(from:to, code_node_group))
+    
+    edges_in_graph_indexed <- 
+        edges_in_coarse_graph |> 
+        mutate(
+            from = match(from, merged_coarse_models %N>% as_tibble() |> pull(name)),
+            to = match(to, merged_coarse_models %N>% as_tibble() |> pull(name))
+        )
+    
+    edge_integers <- 
+        edges_in_graph_indexed |> 
+        mutate(p2p3 = (2 ** from) * (3 ** to) ) |> 
+        pull(p2p3)
+    
+    node_types <- merged_all_graph %N>%
+        as_tibble() |> 
+        distinct(node_group, node_type) 
+    
+    g_highlight <- merged_coarse_models %N>%
+        inner_join(node_types |> rename(name = node_group),
+                   by = "name") |>
+        mutate(
+            node_highlight = if_else(
+                name %in% node_groups_in_graph, 2, 1
+            )) %E>%
+        mutate(edge_highlight = if_else(
+            ((2 ** from )*(3 ** to)) %in% edge_integers, 2, 1
+        )) |> 
+        create_layout("sugiyama")
+    
+    g_highlight |>
+        ggraph() +
+        geom_edge_fan(aes(
+            # edge_linetype = factor(switched),
+            alpha = edge_highlight), 
+            strength = 0.2,
+            arrow = arrow(length = unit(1, 'mm'),
+                          type = "closed"),
+            start_cap = circle(3, 'mm'),
+            end_cap = circle(3, 'mm')) +
+        geom_node_label(
+            aes(label = nice_name, 
+                color = node_type,
+                size = node_w),
+            alpha = 0.7,
+            data = g_highlight |> 
+                filter(node_highlight == 2),
+            repel = T, max.overlaps = 30,
+            show.legend = FALSE) +
+        geom_node_point(aes(colour = node_type,
+                            size = node_w,
+                            alpha = node_highlight)) +
+        scale_size(name = "point-size", range = c(2,5)) +
+        # scale_color_npg() +
+        scale_color_okabe_ito(order = c(9, 7,1, 2,3, 6, 8,5, 4)) +
+        theme_graph() +
+        scale_edge_alpha_continuous(range = c(0.08,0.8)) +
+        scale_alpha_continuous(range = c(0.1,1.0)) +
+        # theme(legend.position = "none",
+        #       plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "pt")) +
+        theme(legend.position = LEGEND_POSITION) +
+        guides(size = "none", edge_width = "none", alpha = "none", edge_alpha = "none",
+               label = "none",
+               color = guide_legend(ncol = 1)) +
+        theme(legend.title = element_blank())
+}
+
+# 5 or 3?
+p_merged_highlighted_fine <- plot_highlighted_fine_graph(5, LEGEND_POSITION = "right")
+p_merged_highlighted_coarse <- plot_highlighted_coarse_graph(5, LEGEND_POSITION = "right")
+p_merged_highlighted_fine
+p_merged_highlighted_coarse
+ggsave(plot = p_merged_highlighted_fine, 
+       filename = "figures/FIG--merged-fine-with-1-highlighted.jpg",
+       width = 8, height = 5, dpi = 900)
+
+ggsave(plot = p_merged_highlighted_coarse, 
+       filename = "figures/FIG--merged-coarse-with-1-highlighted.jpg",
+       width = 8, height = 5, dpi = 900)
+
+```
+
+### Coarsen graphs
 
 Here we merge nodes into node groups before generating plot. This has the potential to likely introduce loops depending on how the constructs were built. 
 
 ``` {r}
-merged_course_models <- 
+merged_coarse_models <- 
     tbl_graph(
         nodes = all_nodes |> 
             mutate(name = code_node_group(name)) |> 
@@ -2069,8 +2263,8 @@ merged_course_models <-
 ```
 
 
-``` {r plotting-course-graph}
-merged_course_layout <- 
+``` {r plotting-coarse-graph}
+merged_coarse_layout <- 
     merged_all_graph |> 
     g_coarsen_dag_by_ng() |> 
     create_layout(layout = "sugiyama") |> 
@@ -2088,14 +2282,15 @@ merged_course_layout <-
             TRUE ~ y)
            )
 
-p_temp <- merged_course_layout |> 
+p_temp <- merged_coarse_layout |> 
      ggraph() +
         geom_edge_fan(aes(alpha = edge_w), strength = 0.2,
             arrow = arrow(length = unit(2, 'mm')),
             start_cap = circle(3, 'mm'),
             end_cap = circle(3, 'mm')) +
         geom_node_point(aes(colour = node_type, size = node_w)) +
-        scale_color_npg(drop = FALSE) +
+    scale_color_okabe_ito(order = c(9, 7,1, 2,3, 6, 8,5, 4)) +
+        # scale_color_npg(drop = FALSE) +
         # geom_node_text(aes(label = name, size = node_w, alpha = node_w), nudge_y = -.5) +
         theme_graph() +
         scale_edge_alpha_continuous(range = c(0.15,0.8)) +
@@ -2106,7 +2301,7 @@ bc <- ggplot_build(p_temp)
 x_limits_course <- bc$layout$panel_params[[1]]$x.range
 y_limits_course <- bc$layout$panel_params[[1]]$y.range
 
-course_plot_from_layout <- function(lyt) {
+coarse_plot_from_layout <- function(lyt) {
     lyt |> 
         ggraph() +
         geom_edge_fan(aes(alpha = edge_w), strength = 0.2,
@@ -2114,7 +2309,8 @@ course_plot_from_layout <- function(lyt) {
             start_cap = circle(3, 'mm'),
             end_cap = circle(3, 'mm')) +
         geom_node_point(aes(colour = node_type, size = node_w)) +
-        ggsci::scale_color_npg(drop = FALSE) +
+        scale_color_okabe_ito(order = c(9, 7,1, 2,3, 6, 8,5, 4), drop = FALSE) +
+        # ggsci::scale_color_npg(drop = FALSE) +
         # geom_node_text(aes(label = name, size = node_w, alpha = node_w), nudge_y = -.5) +
         theme_graph() +
         scale_edge_alpha_continuous(range = c(0.15,0.8)) +
@@ -2124,34 +2320,34 @@ course_plot_from_layout <- function(lyt) {
         ylim(y_limits_course)
 }
 
-g_plot_course <- function(g, lyt = merged_course_layout) {
+g_plot_coarse <- function(g, lyt = merged_coarse_layout) {
     create_layout(g, layout = "sugiyama") |> 
         left_join(lyt |> select(x,y,name, node_type,node_w), by = "name",
                   suffix = c(".default", "")) |> 
-    course_plot_from_layout()    
+    coarse_plot_from_layout()    
 }
 
-pCourseMerged <- merged_course_layout |> 
-    course_plot_from_layout()
-# ggsave("dag_merged_course.svg", pCourseMerged, , width = 6, height = 6)
+pCoarseMerged <- merged_coarse_layout |> 
+    coarse_plot_from_layout()
+# ggsave("dag_merged_course.svg", pCoarseMerged, , width = 6, height = 6)
 ```
 
 
 Note the appearance of feedback loops - these are between S.Cp and S.Kn, but also S.Cp and H.AI.evil. These metacognitive skills are clearly seen as important feedback processes in this system.
 
 ``` {r}
-pCourseMerged + geom_node_text(aes(label = name, size = node_w, alpha = node_w), nudge_x = 1)
+pCoarseMerged + geom_node_text(aes(label = name, size = node_w, alpha = node_w), nudge_x = 1)
 ```
 
 ``` {r}
-p1course <- g_coarsen_dag_by_ng(tdag_s1) |> g_plot_course()
-p2course <- g_coarsen_dag_by_ng(tdag_s2) |> g_plot_course()
-p3course <- g_coarsen_dag_by_ng(tdag_s3) |> g_plot_course()
-p4course <- g_coarsen_dag_by_ng(tdag_s4) |> g_plot_course()
-p5course <- g_coarsen_dag_by_ng(tdag_s5) |> g_plot_course()
-p6course <- g_coarsen_dag_by_ng(tdag_s6) |> g_plot_course()
-p7course <- g_coarsen_dag_by_ng(tdag_s7) |> g_plot_course()
-p8course <- g_coarsen_dag_by_ng(tdag_s8) |> g_plot_course()
+p1course <- g_coarsen_dag_by_ng(tdag_s1) |> g_plot_coarse()
+p2course <- g_coarsen_dag_by_ng(tdag_s2) |> g_plot_coarse()
+p3course <- g_coarsen_dag_by_ng(tdag_s3) |> g_plot_coarse()
+p4course <- g_coarsen_dag_by_ng(tdag_s4) |> g_plot_coarse()
+p5course <- g_coarsen_dag_by_ng(tdag_s5) |> g_plot_coarse()
+p6course <- g_coarsen_dag_by_ng(tdag_s6) |> g_plot_coarse()
+p7course <- g_coarsen_dag_by_ng(tdag_s7) |> g_plot_coarse()
+p8course <- g_coarsen_dag_by_ng(tdag_s8) |> g_plot_coarse()
 
 pAllcourse <- (p1course | p2course | p3course | p4course) / (p5course | p6course | p7course | p8course)
 # ggsave("dags_all_course.svg", pAllcourse, width = 18, height = 9)
@@ -2180,21 +2376,21 @@ node_list_majority_of_models <-
     filter(n >= 4) |> 
     pull(name)
 
-course_filtered_graph_temp <- 
+coarse_filtered_graph_temp <- 
     merged_all_graph |> 
     activate("nodes") |> 
     filter(name %in% node_list_majority_of_models)
 
-course_filtered_graph <- tbl_graph(
-    nodes = course_filtered_graph_temp %N>%
+coarse_filtered_graph <- tbl_graph(
+    nodes = coarse_filtered_graph_temp %N>%
         as_tibble() |> 
         mutate(name = code_node_group(name),
                node_type = code_node_type(name)) ,
-    edges = course_filtered_graph_temp %E>%
+    edges = coarse_filtered_graph_temp %E>%
         as_tibble() %>%
         mutate(
-            from = course_filtered_graph_temp %N>% pull(name) %>% .[from],
-            to   = course_filtered_graph_temp %N>% pull(name) %>% .[to]
+            from = coarse_filtered_graph_temp %N>% pull(name) %>% .[from],
+            to   = coarse_filtered_graph_temp %N>% pull(name) %>% .[to]
         ) %>%
         select(from, to, edge_w) |> 
         mutate(across(from:to, code_node_group))) |> 
@@ -2211,7 +2407,7 @@ course_filtered_graph <- tbl_graph(
 
 ``` {r}
 # Old - not used
-lyt_top_node_groups <- create_layout(course_filtered_graph, layout = "sugiyama") |> 
+lyt_top_node_groups <- create_layout(coarse_filtered_graph, layout = "sugiyama") |> 
     mutate(
         x = case_when(
             nice_name == "Student subject knowledge" ~ 0.5,
@@ -2249,8 +2445,8 @@ p_top_node_groups <- ggraph(lyt_top_node_groups) +
 # ggsave("figures/FIG--consensus-DAG.png", p_top_node_groups, dpi = 600, height = 4, width = 6)
 ```
 
-Weighting by num of models instead.
-This one uses only nodes that are in the majority of models, then coursens the graph, then aggregates edges based on the number of models that they appear in. 
+Weighting by num of models instead
+This one uses only nodes that are in the majority of models, then coarsens the graph, then aggregates edges based on the number of models that they appear in. 
 The edges must also appear in at least 2 models
 
 ``` {r}
@@ -2260,11 +2456,11 @@ node_list_majority_of_models <-
     filter(n >= 4) |> 
     pull(name)
 
-course_filtered_graph_ng_filled <- 
+coarse_filtered_graph_ng_filled <- 
     tbl_graph( # only nodes that are in most models (4 or more)
         nodes = all_nodes |> 
             filter(name %in% node_list_majority_of_models) |> 
-            mutate( # but then coursen into node groups
+            mutate( # but then coarsen into node groups
                 node_group = code_node_group(name),
                    node_type = code_node_type(name)) |> 
             count(node_group, node_type) |> 
@@ -2292,8 +2488,8 @@ course_filtered_graph_ng_filled <-
 Filtered - edges must be in at least 2 models
 
 ``` {r}
-lyt_course_filtered_ng_filtered <- create_layout(
-    course_filtered_graph_ng_filled |> 
+lyt_coarse_filtered_ng_filtered <- create_layout(
+    coarse_filtered_graph_ng_filled |> 
         activate("edges") |> 
         filter(edge_w > 1) |> 
         mutate(
@@ -2305,22 +2501,24 @@ lyt_course_filtered_ng_filtered <- create_layout(
         ) , 
     layout = "sugiyama")
 
-p_top_node_groups_filtered <- ggraph(lyt_course_filtered_ng_filtered) +
+p_top_node_groups_filtered <- ggraph(lyt_coarse_filtered_ng_filtered) +
     geom_edge_fan(aes(edge_linetype = factor(switched), alpha = edge_w, ), # alpha = edge_w, 
                   strength = 0.8,
                   arrow = arrow(length = unit(2, 'mm'), type = "closed"),
                   start_cap = circle(3, 'mm'),
                   end_cap = circle(3, 'mm')) +
     geom_node_point(aes(colour = node_type, size = node_w)) +
-    ggsci::scale_color_npg(drop = FALSE) +
+    scale_color_okabe_ito(order = c(9, 7,1, 2,3, 6, 8,5, 4), drop = FALSE) +
+    # ggsci::scale_color_npg(drop = FALSE) +
     # geom_node_text(aes(label = name, size = node_w, alpha = node_w), nudge_y = -.5) +
     theme_graph() +
         scale_edge_alpha_continuous(range = c(0.15,0.8)) +
         scale_alpha_continuous(range = c(0.2,0.9)) +
         theme(legend.position = "none") +
+    scale_size(range = c(3,6)) +
     geom_node_text(aes(label = nice_name, colour = node_type), 
                    alpha = 0.9, nudge_y = -.13, repel = F) +
-    xlim(c(min(lyt_course_filtered_ng_filtered$x) - 0.15, max(lyt_course_filtered_ng_filtered$x) + 0.15))
+    xlim(c(min(lyt_coarse_filtered_ng_filtered$x) - 0.15, max(lyt_coarse_filtered_ng_filtered$x) + 0.15))
 
 p_top_node_groups_filtered
 
@@ -2333,30 +2531,32 @@ ggsave("figures/FIG--consensus-sub-model-filtered.jpg",
 All edges between node groups from the majority nodes
 
 ``` {r}
-lyt_course_filtered_ng_full <- create_layout(
-    course_filtered_graph_ng_filled, 
+lyt_coarse_filtered_ng_full <- create_layout(
+    coarse_filtered_graph_ng_filled, 
     layout = "sugiyama") |> 
     select(-x, -y) |> 
-    inner_join(lyt_course_filtered_ng_filtered |> select(x, y, node_group))
+    inner_join(lyt_coarse_filtered_ng_filtered |> select(x, y, node_group))
 
-p_top_node_groups_full <- ggraph(lyt_course_filtered_ng_full) +
+p_top_node_groups_full <- ggraph(lyt_coarse_filtered_ng_full) +
     geom_edge_fan(aes(edge_linetype = factor(switched), alpha = edge_w, ), # alpha = edge_w, 
                   strength = 0.8,
                   arrow = arrow(length = unit(2, 'mm'), type = "closed"),
                   start_cap = circle(3, 'mm'),
                   end_cap = circle(3, 'mm')) +
     geom_node_point(aes(colour = node_type, size = node_w)) +
-        ggsci::scale_color_npg(drop = FALSE) +
+    scale_color_okabe_ito(order = c(9, 7,1, 2,3, 6, 8,5, 4), drop = FALSE) +
+        # ggsci::scale_color_npg(drop = FALSE) +
         # geom_node_text(aes(label = name, size = node_w, alpha = node_w), nudge_y = -.5) +
         theme_graph() +
         scale_edge_alpha_continuous(range = c(0.15,0.8)) +
         scale_alpha_continuous(range = c(0.2,0.9)) +
         theme(legend.position = "none") +
+    scale_size(range = c(3,6)) +
     geom_node_text(aes(label = nice_name, colour = node_type), 
                    alpha = 0.9, nudge_y = -.13, repel = F) +
     xlim(c(
-        min(lyt_course_filtered_ng_full$x) - 0.15, 
-        max(lyt_course_filtered_ng_full$x) + 0.15))
+        min(lyt_coarse_filtered_ng_full$x) - 0.15, 
+        max(lyt_coarse_filtered_ng_full$x) + 0.15))
 
 p_top_node_groups_full
 
@@ -2433,23 +2633,23 @@ p_top_node_pagerank_no_outcome_measurability <-
     geom_boxplot(aes(fill = m_group), colour = "lightgray", size = 0.4, alpha = 0.7) +
     # geom_line(aes(x = pagerank_no_outcome, y = node_group, group = Model), alpha = 0.6) +
     geom_point(aes(colour = measurability), alpha = 0.9) +
-    scale_color_gradient2(
-        low = friendly_pals$contrast_three[[1]], 
-        mid = friendly_pals$contrast_three[[2]],
-        high = friendly_pals$contrast_three[[3]],
-        midpoint = mean(range(d_ng_measurability_importance$measurability)),
+    scale_color_gradient(
+        low = "darkslateblue", 
+        # mid = "darkturquoise",
+        high = "aquamarine",
+        # midpoint = mean(range(d_ng_measurability_importance$measurability)),
         limits = c(0,1),
         breaks = c(0, 1/3, 2/3, 1),
         labels = c("Latent","Potentially\nobservable", "Observable", "Data\nWarehouse"),
         name = "",
         guide = guide_colorbar(reverse = FALSE)
     ) +
-    scale_fill_gradient2(
-        midpoint = mean(range(d_ng_measurability_importance$m_group)),
+    scale_fill_gradient(
+        # midpoint = mean(range(d_ng_measurability_importance$m_group)),
         limits = c(0,1),
-        low = friendly_pals$contrast_three[[1]], 
-        mid = friendly_pals$contrast_three[[2]],
-        high = friendly_pals$contrast_three[[3]]
+                low = "darkslateblue", 
+        # mid = "darkturquoise",
+        high = "aquamarine"
         ) +
     theme_minimal() +
     ylab("Node group") +
@@ -2488,8 +2688,10 @@ p_node_importance_with_measurability <- (wrap_elements(leg) /
 With discrete scale instead
 
 ``` {r}
-m_pal <- friendly_pals$ibm_five[c(2,1,4,3)]
-m_pal <- friendly_pals$nickel_five[c(3,5,2,4)]
+m_pal <- c("darkslateblue",
+    "dodgerblue","orange","deeppink")
+    
+
 p_top_node_pagerank_no_outcome_measurability_discrete <- 
     d_ng_measurability_importance |>
     mutate(
@@ -2584,9 +2786,9 @@ p_top_node_pagerank_no_outcome_trace_dist <-
     # geom_line(aes(x = pagerank_no_outcome, y = node_group, group = Model), alpha = 0.6) +
     geom_point(aes(colour = m_dist_to_trace), alpha = 0.9) +
     scale_color_gradient2(
-        low = friendly_pals$contrast_three[[3]], 
-        mid = friendly_pals$contrast_three[[2]],
-        high = friendly_pals$contrast_three[[1]],
+        low = "darkslateblue", 
+        mid = "coral",
+        high = "deeppink",
         midpoint = mean(range(d_ng_trace_importance$m_dist_to_trace)),
                          breaks = range(d_ng_trace_importance$m_dist_to_trace),
                          labels = c("Observed","Latent"),
@@ -2595,9 +2797,9 @@ p_top_node_pagerank_no_outcome_trace_dist <-
         ) +
     scale_fill_gradient2(
         midpoint = mean(range(d_ng_trace_importance$m_dist_to_trace)),
-        low = friendly_pals$contrast_three[[3]], 
-        mid = friendly_pals$contrast_three[[2]],
-        high = friendly_pals$contrast_three[[1]]
+        low = "darkslateblue", 
+        mid = "coral",
+        high = "deeppink"
         ) +
     theme_minimal() +
     ylab("Node group") +
