@@ -6,6 +6,6 @@ All analysis in the .qmd file.
 There is a nice html render of it (below) but unfortunately the anonymise github machinery doesn't let it render well. 
 The modelling protocol is in a word doc in this repo - but it does include questions / components for this particular piece of research in addition to the guidelines for running causal modelling sessions with domain experts.
 
-View [the analysis here](https://htmlpreview.github.io/?https://github.com/benwhicks/lak26-assured-assessment-dag-analysis/blob/main/elicited-DAG-analysis.html) - although the html preview doesn't seem to work with the anonymised repo.
+View [the analysis here](https://htmlpreview.github.io/?https://anonymous.4open.science/r/assured-assessment-dag-analysis-531D/blob/main/elicited-DAG-analysis.html) - although the html preview doesn't seem to work with the anonymised repo.
 
 Paper to come :) 
