@@ -2452,20 +2452,20 @@ p_fine_show_and_save <- function(n){
     p_temp <- plot_highlighted_fine_graph(n, LEGEND_POSITION = "right") + ggtitle(paste0("Model ", n, " highlighted"))
     ggsave(plot = p_temp, 
            filename = paste0("figures/plt--merged-fine-with-", n, "-highlighted.jpg"),
-           width = 8, height = 5, dpi = 600)
+           width = 5, height = 3, dpi = 600)
     return(p_temp)
 }
 p_coarse_show_and_save <- function(n){
     p_temp <- plot_highlighted_coarse_graph(n, LEGEND_POSITION = "right") + ggtitle(paste0("Coarsened model ", n, " highlighted"))
     ggsave(plot = p_temp, 
            filename = paste0("figures/plt--merged-coarse-with-", n, "-highlighted.jpg"),
-           width = 8, height = 5, dpi = 600)
+           width = 5, height = 3, dpi = 600)
     return(p_temp)
 }
 ```
 
 Highlighting all models in turn
-``` {r}
+``` {r render-all-highlighted-fine-models}
 p_fine_show_and_save(1)
 p_fine_show_and_save(2)
 p_fine_show_and_save(3)
@@ -2477,7 +2477,7 @@ p_fine_show_and_save(8)
 ```
 
 Highlighting all coarsened models in turn
-``` {r}
+``` {r render-all-highlighted-coarse-models}
 p_coarse_show_and_save(1)
 p_coarse_show_and_save(2)
 p_coarse_show_and_save(3)
