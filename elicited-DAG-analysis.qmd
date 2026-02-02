@@ -2451,14 +2451,14 @@ ggsave(plot = p_merged_highlighted_coarse,
 p_fine_show_and_save <- function(n){
     p_temp <- plot_highlighted_fine_graph(n, LEGEND_POSITION = "right") + ggtitle(paste0("Model ", n, " highlighted"))
     ggsave(plot = p_temp, 
-           filename = paste0("figures/plt--merged-fine-with-", n, "-highlighted.jpg"),
+           filename = paste0("figures/plt--merged-fine-with-", n, "-highlighted.png"),
            width = 8, height = 5, dpi = 600)
     return(p_temp)
 }
 p_coarse_show_and_save <- function(n){
     p_temp <- plot_highlighted_coarse_graph(n, LEGEND_POSITION = "right") + ggtitle(paste0("Coarsened model ", n, " highlighted"))
     ggsave(plot = p_temp, 
-           filename = paste0("figures/plt--merged-coarse-with-", n, "-highlighted.jpg"),
+           filename = paste0("figures/plt--merged-coarse-with-", n, "-highlighted.png"),
            width = 8, height = 5, dpi = 600)
     return(p_temp)
 }
