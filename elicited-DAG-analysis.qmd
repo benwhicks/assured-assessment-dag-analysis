@@ -1,14 +1,22 @@
 ---
-title: "elicited-dag-analysis"
-execute:
-  dev: svglite
+title: "Eliciting causal models -- Analysis"
 format: 
-    html:
-        code-fold: true
-        warning: false
-        message: false
-        fig-format: svg
+    pdf:
+        fig-format: png
 ---
+
+``` {r}
+#| include: false
+# Old yaml - put back for de-anonymised repo
+# execute:
+#   dev: svglite
+# format: 
+#     html:
+#         code-fold: true
+#         warning: false
+#         message: false
+#         fig-format: svg
+```
 
 ``` {r library-load}
 #options(device = svglite::svglite)
@@ -31,6 +39,7 @@ library(ggokabeito)
 ## Sessions
 
 ``` {r}
+#| echo: false
 to_duration <- function(x){
     x |> 
         str_remove(":00$") |> 
@@ -68,10 +77,12 @@ session_data <- tibble::tribble(
 
 ## Graphical Causal Models
 
-Modelling sessions were originally run on Loopy, then transcribed into DAGitty (online) to generate the following `dot` language syntax for importing into `R`. A better way of doing this is under development. 
+Modelling sessions were originally run on Loopy, then transcribed into DAGitty (online) to generate the following `dot` language syntax for importing into `R`. A better way of doing this is under development. Code hidden for this pdf render, can be inspected in the .qmd file.
 
 
 ``` {r}
+#| echo: false
+
 # CD: Course Data (both LMS and Course structure)
 # CD.Str Course structure (usually the course data on graphs)
 # CD.LMS: LMS activity data
@@ -753,6 +764,8 @@ From the node groups, describe how easy (or not) they are to measure. This is in
 By "direct proxy" I mean one step away in the causal graph. So if $X,Y$ is not measurably, but $Z$ is then $X\rightarrow Z$ would mean that $X$ is measurable by proxy. However if at best we can only justify $X \rightarrow Y \rightarrow Z$ then $X$ is intangible. 
 
 ``` {r node-measurability-old}
+#| echo: false
+
 # Node measurability function
 
 # old_code_node_measurability <- function(ng) {
@@ -1148,6 +1161,17 @@ edges_with_metrics <-
                   select(from, to) |> mutate(switched = "contested")) |> 
     mutate(switched = replace_na(switched, "aligned"))
 
+edges_with_metrics |> 
+    count(switched) |> 
+    mutate(n = if_else(switched == "aligned", n, n/2)) |> # contested are counted twice due to edge reversal
+    mutate(p = n / sum(n))
+
+edges_with_metrics |> 
+    filter(switched == "contested" | n > 1) |> 
+    count(switched) |> 
+    mutate(n = if_else(switched == "aligned", n, n/2)) |> # contested are counted twice due to edge reversal
+    mutate(p = n / sum(n))
+
 ```
 
 Also examining counts of the kinds of paths:
@@ -1207,6 +1231,7 @@ This is based on the coding of the nodes into node groups.
 
 ``` {r}
 g_coarsen_dag_by_ng <- function(g){
+    # Creates a "coarser" graph by merging all nodes in the same node group
     old_nodes <- g %N>% as_tibble()
     
     if (!("node_w" %in% names(old_nodes))) {
@@ -1262,6 +1287,27 @@ g_coarsen_dag_by_type <- function(g){
 }
 ```
 
+
+Here we merge nodes into node groups before generating plot later. This has the potential to likely introduce loops depending on how the constructs were built. 
+
+``` {r}
+merged_coarse_models <- 
+    tbl_graph(
+        nodes = all_nodes |> 
+            mutate(name = code_node_group(name)) |> 
+            distinct(Model, name) |> 
+            count(name) |> 
+            rename(node_w = n) |> 
+            inner_join(node_group_nice_name |> rename(name = node_group)),
+        edges = all_edges |> 
+            mutate(across(from:to, code_node_group)) |> 
+            distinct() |> 
+            count(from, to) |> 
+            rename(edge_w = n)
+    )
+    
+```
+
 # Graph metrics
 
 ## Measurability, complexity
@@ -1297,7 +1343,7 @@ all_paths <- tibble(
         p_open = map_dbl(Paths.df, ~mean(pull(.,open)))
     )
 
-
+# Yes, this really should be implemented using map_df or something more elegant
 dag_complexity_metrics <- 
     bind_cols(tibble(Model = "S1"),
           g_summary_metrics(tdag_s1) |> 
@@ -1538,12 +1584,12 @@ hue1 <- palette.colors(3, palette = "Okabe-Ito")[[2]]
 hue2 <- palette.colors(3, palette = "Okabe-Ito")[[3]]
 
 # Main plot - hide all legends
-p_main <- gcm_metrics |> 
+p_validity_and_time <- gcm_metrics |> 
     mutate(
         x_duration = as.numeric(Modelling.duration, units = "minutes"),
         y_validity = GCM.validity
     ) |> 
-    mutate(acyclic = if_else(acyclic, "Yes, DAG", "No, contained cycles")) |> 
+    mutate(acyclic = if_else(acyclic, "Yes", "No")) |> 
     ggplot(aes(
         color = acyclic,
         size = n_adj_sets
@@ -1552,7 +1598,7 @@ p_main <- gcm_metrics |>
         x = x_duration,
         y = y_validity)) +
     scale_y_continuous(
-        limits = c(1, 4),
+        limits = c(1, 4.05),
         breaks = c(1, 2, 3, 4),
         labels = c("Trivially", "Simply", "Adequately", "Well"),
         name = "Representation of GCM") +
@@ -1562,96 +1608,96 @@ p_main <- gcm_metrics |>
         name = "Time spent constructing model (minutes)") +
     scale_size(range = c(2, 7),
                breaks = range(gcm_metrics$n_adj_sets),
-               name = "N adjustment sets") +
-    scale_color_manual(values = c(hue1, hue2), name = "Is DAG?") +
+               name = "Adjustment\nsets (count)") +
+    scale_color_manual(values = c(hue1, hue2), name = "Acyclic?") +
     scale_fill_manual(values = c(hue1, hue2), guide = "none") +
     theme_minimal() +
-    coord_fixed(ratio = 2
-                # , clip = "off"
-                ) +
+    # coord_fixed(ratio = 2
+    #             # , clip = "off"
+    #             ) +
     theme(
-        legend.position = "top",  # Hide legends from main plot
+        legend.position = "left",  # Hide legends from main plot
         # panel.grid.major.x = element_blank(),  # Remove vertical gridlines
         panel.grid.minor = element_blank(),
         plot.margin = margin(10, 10, 10, 10)
     )
 
-# Create a dummy plot just to extract the legends
-p_for_legend <- gcm_metrics |> 
+
+p_visibility <- gcm_metrics |>
     mutate(
-        x_duration = as.numeric(Modelling.duration, units = "minutes"),
-        y_validity = GCM.validity * 10 + 20
+        cp_dw = p_dw,
+        cp_o = p_dw + p_o,
+        cp_po = p_dw + p_o + p_po,
+        cp_l = p_dw + p_o + p_po + p_l # should equal 1
     ) |> 
-    mutate(acyclic = if_else(acyclic, "Yes, DAG", "No, contained cycles")) |> 
+    mutate(GCM.validity = case_when(
+        GCM.validity == 3 & acyclic ~ GCM.validity - 0.03,
+        GCM.validity == 3 & !acyclic ~ GCM.validity + 0.03,
+        GCM.validity == 2.5 & acyclic ~ GCM.validity - 0.03,
+        GCM.validity == 2.5 & !acyclic ~ GCM.validity + 0.03,
+        TRUE ~ GCM.validity
+    )) |> 
+    pivot_longer(c(starts_with("cp_"), starts_with("p_")), names_to = "node_vis", values_to = "proportion") |> 
+    mutate(node_visibility = case_when(
+        str_detect(node_vis, "p_dw") ~ "Data Warehouse",
+        str_detect(node_vis, "p_o") ~ "Observable",
+        str_detect(node_vis, "p_po") ~ "Potentially observable",
+        str_detect(node_vis, "p_l") ~ "Latent"
+    ) |> 
+        ordered(levels = c(
+            "Latent",
+            "Potentially observable",
+            "Observable",
+            "Data Warehouse"
+        ))) |> 
+    mutate(prop_type = if_else(str_detect(node_vis, "^cp_"), "cp", "p")) |> 
+    pivot_wider(names_from = prop_type, values_from = proportion, id_cols = c(Model,acyclic, GCM.validity, node_visibility)) |> 
+    mutate(acyclic = if_else(acyclic, "Yes", "No")) |>  
     ggplot(aes(
-        x = x_duration,
-        y = y_validity,
-        color = acyclic,
-        size = n_adj_sets
+        color = acyclic
     )) +
-    geom_point() +
-    scale_size(range = c(2, 7),
-               breaks = range(gcm_metrics$n_adj_sets),
-               name = "N adjustment sets") +
-    scale_color_manual(values = c(hue1, hue2), name = "Is DAG?") +
+    geom_rect(aes(
+        xmin = cp - p,
+        xmax = cp,
+        ymin = GCM.validity - 0.03,
+        ymax = GCM.validity + 0.03,
+        fill = acyclic,
+        alpha = node_visibility),
+        color = "white") +
+    scale_y_continuous(
+        limits = c(1, 4.05),
+        breaks = c(1, 2, 3, 4),
+        labels = c("Trivially", "Simply", "Adequately", "Well"),
+        name = "Representation of GCM",
+        position = "right") +
+    scale_alpha_discrete(name = "Data visibility") +
+    scale_fill_manual(values = c(hue1, hue2), guide = "none") +
     theme_minimal() +
-    theme(legend.box = "vertical")
+    # coord_fixed(ratio = 0.15
+    #             # , clip = "off"
+    #             ) +
+    xlab("Proportion of nodes") +
+    theme(
+        legend.position = "right",  # Hide legends from main plot
+        # panel.grid.major.x = element_blank(),  # Remove vertical gridlines
+        panel.grid.minor = element_blank(),
+        plot.margin = margin(10, 10, 10, 10),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank()
+    )
 
-# Extract the legend
-legend_extracted <- cowplot::get_legend(p_for_legend)
 
-# Custom legend plot showing the arc explanation
-p_legend_arcs <- ggplot() +
-    geom_arc_bar(aes(x0 = 0, y0 = 0, r0 = 0.1, r = 0.8, start = pi, end = pi + pi/3),
-             fill = "black", alpha = 1, linewidth = 0) +
-    geom_arc_bar(aes(x0 = 0, y0 = 0, r0 = 0.1, r = 0.6, start = pi + pi/3, end = pi + (2*pi/3)),
-             fill = "black", alpha = 0.6, linewidth = 0) +
-    geom_arc_bar(aes(x0 = 0, y0 = 0, r0 = 0.1, r = 0.4, start = pi + (2*pi/3), end = 2 * pi),
-             fill = "black", alpha = 0.4, linewidth = 0) +
-    annotate("text", 
-             x = 0.5, y = -0.9,
-             label = "In data\nwarehouse", 
-             hjust = 0, size = 3, color = "black") +
-    annotate("text", 
-             x = 0.5, y = 0, 
-             label = "Observable", 
-             hjust = 0, size = 3, color = adjustcolor("black", alpha.f = 0.8)) +
-    annotate("text", x = 0.5, y = 0.9, label = "Potentially\nobservable", 
-             hjust = 0, size = 3, color = adjustcolor("black", alpha.f = 0.6)) +
-    annotate("segment", x = 0.1, xend = 0.4, y = -0.5, yend = -0.6, color = "black") +
-    annotate("segment", x = 0, xend = 0.4, y = 0, yend = 0, 
-             color = "black", alpha = 0.6) +
-    annotate("segment", x = 0.1, xend = 0.4, y = 0.4, yend = 0.6, 
-             color = "black", alpha = 0.4) +
-    coord_fixed() +
-    xlim(-1, 2.5) +
-    ylim(-1.3, 1.3) +
-    labs(title = "Proportion of nodes:") +
-    theme_void() +
-    theme(plot.title = element_text(size = 9, face = "bold"))
-
-# Combine the arc legend and extracted legends vertically
-legend_column <- cowplot::plot_grid(
-    legend_extracted,
-    p_legend_arcs,
-    ncol = 2,
-    rel_heights = c(1, 1)
-)
-
-# Combine main plot with legend column
-p_time_and_representation <- cowplot::plot_grid(
-    p_main,
-    legend_column,
-    ncol = 2,
-    rel_widths = c(1, 1)  # Adjust ratio as needed
-)
-
-p_time_and_representation
+p_time_and_representation_1 <- p_validity_and_time + p_visibility
+p_time_and_representation_1
 
 ggsave("figures/FIG--time-modelling-and-representation.jpg", 
-       plot = p_time_and_representation,
+       plot = p_time_and_representation_1,
        width = 10, height = 5, 
-       dpi = 900)
+       dpi = 300)
+
+ggsave("figures/FIG--time-modelling-and-representation.svg", 
+       plot = p_time_and_representation_1,
+       width = 25, height = 10, units = "cm")
 ```
 
 
@@ -1738,7 +1784,7 @@ p_main <- gcm_metrics |>
         name = "Time spent constructing model (minutes)") +
     scale_size(range = c(2, 7),
                breaks = range(gcm_metrics$n_adj_sets),
-               name = "N adjustment sets") +
+               name = "Adjustment\nsets") +
     scale_color_manual(values = c(hue1, hue2), name = "Is DAG?") +
     scale_fill_manual(values = c(hue1, hue2), guide = "none") +
     theme_minimal() +
@@ -2173,14 +2219,6 @@ p6KnHighlight <- p6 +
         inner_join(name_node_nice_name, by = "name"), repel = T) 
 # 
 
-# ggsave("dag_s1_fine.svg", p1, width = 6, height = 6)
-# ggsave("dag_s2_fine.svg", p2, width = 6, height = 6)
-# ggsave("dag_s3_fine.svg", p3, width = 6, height = 6)
-# ggsave("dag_s4_fine.svg", p4, width = 6, height = 6)
-# ggsave("dag_s5_fine.svg", p5, width = 6, height = 6)
-# ggsave("dag_s6_fine.svg", p6, width = 6, height = 6)
-# ggsave("dag_s7_fine.svg", p7, width = 6, height = 6)
-# ggsave("dag_s8_fine.svg", p8, width = 6, height = 6)
 ```
 
 ``` {r}
@@ -2394,43 +2432,66 @@ plot_highlighted_coarse_graph <- function(model = 1, LEGEND_POSITION = "none") {
         theme(legend.title = element_blank())
 }
 
-# 5 or 3?
+# Model used in paper
 p_merged_highlighted_fine <- plot_highlighted_fine_graph(5, LEGEND_POSITION = "right")
 p_merged_highlighted_coarse <- plot_highlighted_coarse_graph(5, LEGEND_POSITION = "right")
-p_merged_highlighted_fine
-p_merged_highlighted_coarse
+p_merged_highlighted_fine + ggtitle("Model used in paper (5)")
+p_merged_highlighted_coarse 
 ggsave(plot = p_merged_highlighted_fine, 
        filename = "figures/FIG--merged-fine-with-1-highlighted.jpg",
-       width = 8, height = 5, dpi = 900)
+       width = 8, height = 5, dpi = 600)
 
 ggsave(plot = p_merged_highlighted_coarse, 
        filename = "figures/FIG--merged-coarse-with-1-highlighted.jpg",
-       width = 8, height = 5, dpi = 900)
-
+       width = 8, height = 5, dpi = 600)
 ```
-
-### Coarsen graphs
-
-Here we merge nodes into node groups before generating plot. This has the potential to likely introduce loops depending on how the constructs were built. 
 
 ``` {r}
-merged_coarse_models <- 
-    tbl_graph(
-        nodes = all_nodes |> 
-            mutate(name = code_node_group(name)) |> 
-            distinct(Model, name) |> 
-            count(name) |> 
-            rename(node_w = n) |> 
-            inner_join(node_group_nice_name |> rename(name = node_group)),
-        edges = all_edges |> 
-            mutate(across(from:to, code_node_group)) |> 
-            distinct() |> 
-            count(from, to) |> 
-            rename(edge_w = n)
-    )
-    
+# Generating all
+p_fine_show_and_save <- function(n){
+    p_temp <- plot_highlighted_fine_graph(n, LEGEND_POSITION = "right") + ggtitle(paste0("Model ", n, " highlighted"))
+    ggsave(plot = p_temp, 
+           filename = paste0("figures/plt--merged-fine-with-", n, "-highlighted.jpg"),
+           width = 8, height = 5, dpi = 600)
+    return(p_temp)
+}
+p_coarse_show_and_save <- function(n){
+    p_temp <- plot_highlighted_coarse_graph(n, LEGEND_POSITION = "right") + ggtitle(paste0("Coarsened model ", n, " highlighted"))
+    ggsave(plot = p_temp, 
+           filename = paste0("figures/plt--merged-coarse-with-", n, "-highlighted.jpg"),
+           width = 8, height = 5, dpi = 600)
+    return(p_temp)
+}
 ```
 
+Highlighting all models in turn
+``` {r}
+p_fine_show_and_save(1)
+p_fine_show_and_save(2)
+p_fine_show_and_save(3)
+p_fine_show_and_save(4)
+p_fine_show_and_save(5)
+p_fine_show_and_save(6)
+p_fine_show_and_save(7)
+p_fine_show_and_save(8)
+```
+
+Highlighting all coarsened models in turn
+``` {r}
+p_coarse_show_and_save(1)
+p_coarse_show_and_save(2)
+p_coarse_show_and_save(3)
+p_coarse_show_and_save(4)
+p_coarse_show_and_save(5)
+p_coarse_show_and_save(6)
+p_coarse_show_and_save(7)
+p_coarse_show_and_save(8)
+```
+
+
+
+
+### Visualising coarsened graphs
 
 ``` {r plotting-coarse-graph}
 merged_coarse_layout <- 
