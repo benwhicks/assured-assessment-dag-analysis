@@ -827,6 +827,7 @@ code_node_measurability <- function(node) {
         node == "S.Act.Fb" ~ "L",
         node == "S.Act.Fb.Post" ~ "L",
         str_detect(node, "^S\\.Act") ~ "PO", 
+        str_detect(node, "^S\\.Kn") ~ "PO", 
         str_detect(node, "^S") ~ "L", # Latent
         # Help
         node == "H.other.evil" ~ "L",
