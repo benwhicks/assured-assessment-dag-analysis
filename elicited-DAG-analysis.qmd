@@ -536,6 +536,17 @@ dag_to_tidy_graph <- function(dag){
     tg <- tbl_graph(nodes = nodes, edges = edges, directed = TRUE)
     return(tg)
 }
+
+dagitty_from_edge_df <- function(edges) {
+    # edges is a df with "from" and "to"
+    dagitty(str_c(
+    "dag{", 
+    str_c(edges |> 
+              mutate(edge_string = str_c(from, "->", to)) |> 
+              pull(edge_string),
+          collapse = ";\n")
+    ,"}"))
+}
 ```
 
 Creating a list of all the DAGs in tidy format:
@@ -3210,6 +3221,173 @@ edge_group_analysis_graph %N>%
     theme_graph()
 ```
 
-Path importance - what about the sets of implied conditional independencies? Is there a way to look at the sets of these and see if any contradict each other??
+Path importance - what about the sets of implied conditional independancies? Is there a way to look at the sets of these and see if any contradict each other??
+
+# Simulation
+
+Now we examine the feasibility of learning these models from data. A typical counter to going to the effort of eliciting these models from domain experts is that they can be learned from the data alone. However, we have seen here that much of the data is not present in the institutions ecosystem, with the nodes being deemed inherintly latent (`r round(100*(sum(all_nodes_with_metrics$measurability == "L") / nrow(all_nodes_with_metrics)), 1)`%), potentially observable (`r round(100*(sum(all_nodes_with_metrics$measurability == "PO") / nrow(all_nodes_with_metrics)), 1)`%), observable but not currently in the data (`r round(100*(sum(all_nodes_with_metrics$measurability == "O") / nrow(all_nodes_with_metrics)), 1)`%), or already measured and stored in the current data ecosystem (`r round(100*(sum(all_nodes_with_metrics$measurability == "DW") / nrow(all_nodes_with_metrics)), 1)`%).
+
+We design this experiement as follows. Each supplied model is used to generate synthetic data, assuming each node has an equal effect on its descendants. HOW WILL THIS DO LOOPS? For the "potentially observable" nodes a single descendant node is added, a proxy measurement node that is not the exact node measured but whose value depends only on the potentially observable node and some additional noise. The set of proxy nodes for the potentially observable ($PO$) nodes we denote ($\hat{PO}$). We choose three scenarios of data quality: idyllic, typical, and noisy. Each of these scenarios is represented by the ratio of the path effect to the noise.
+
+``` {r}
+sim_signal_to_noise_ratios <- list("idyllic" = 5, "typical" = 1, "noisy" = 0.2)
+
+tibble(Scenario = names(sim_signal_to_noise_ratios),
+       `Signal:Noise` = as.numeric(sim_signal_to_noise_ratios)) 
+```
+
+Here we see that in a "typical" scenario we assume that each path coefficient is `r sim_signal_to_noise_ratios[["typical"]]` times stronger than the noise. For simplicity we set each path coefficient to 0.5 and so in this case the variance in the noise for each node is $0.5^2$/`r sim_signal_to_noise_ratios[["typical"]]`. NEED TO COMPARE THESE CHOICES TO TYPICAL WAYS THESE THINGS ARE TESTED.
+
+We then apply a structure learning algorithm to each models simulated data in three phases: learning from the currently measured data only (only DW nodes), learning from all observable nodes (DW and O) nodes, and finally learning from all potentially available data (DW, O and $\hat{PO}$). This represents increasing levels of resourcing applied to learning the underlying causal structure, given the model. 
+
+Note we are working under a local assumption that each model is the 'ground truth', but fully acknowledge that we do not know for this system what the true model is. However, if the structure learning claims of application to discover latent nodes are to be believed (CITE) then we should see some reasonable convergence towards each locally true model. 
 
 
+``` {r simulate-data-from-dags}
+# maybe use dagitty::simulateSEM() or dagitty::simulateLogistic()
+# dagitty suggests using lavaan instead for SEM
+
+
+
+model <- "S1"
+nodes <- all_nodes_with_metrics |> 
+    filter(Model == model) |> 
+    select(name, node_group, node_type, measurability) |> 
+    bind_rows( # adding proxy nodes for PO nodes
+        all_nodes_with_metrics |> 
+            filter(Model == model, measurability == "PO") |> 
+            select(name, node_type) |> 
+            mutate(name = str_c(name, "_p")) |> 
+            mutate(node_group = "Proxy") |> 
+            mutate(measurability = "O") # the assumption for the proxy
+    ) |> 
+    mutate(measurability = factor(
+        measurability, 
+        levels = levels(all_nodes_with_metrics$measurability)))
+
+edges <- all_edges |> 
+    filter(Model == tolower(model)) |> 
+    select(-Model) |> 
+    bind_rows(
+        tibble(
+            from = nodes |> 
+                filter(measurability == "PO") |> 
+                pull(name)) |> 
+            mutate(to = str_c(from, "_p"))
+    )
+
+new_tidydag <- tidygraph::tbl_graph(
+    nodes = nodes, edges = edges, directed = TRUE
+)
+new_dag <- dagitty_from_edge_df(edges)
+
+d.sim.logistic <- simulateLogistic(new_dag, b.default = 1, N = 1000)
+
+# Thinking of a simple dag X -> Y, we have 
+# Var(Y) = b^2 * Var(X) + Var(eps) -- eps is the noise, and here it is set to 1 by default
+# then Var(Y) = b^2 + 1
+# Since the R^2 is the ratio of the variance explained by X:
+# R^2 = Var(explained) / Var(total)
+# R^2 = b^2 / (b^2 + 1)
+
+
+
+# noise is variance 1
+# signal variance is b^2
+
+d.noisy <- simulateSEM(new_dag, b.default = 0.1, eps = 1, standardized = F, N = 1000)
+d.typical <- simulateSEM(new_dag, b.default = 0.4, eps = 1, standardized = F,N = 1000)
+d.ideal <- simulateSEM(new_dag, b.default = 0.9, eps = 1, standardized = F,N = 1000)
+
+plot_parent_child <- function(d) {
+    fit <- lm(Child ~ Parent, 
+              data = d |> 
+                  mutate(Parent = CD, Child = CD_p))
+    
+    # fit$residuals |> plot()
+    d |>
+        mutate(Parent = CD, Child = CD_p) |>
+        ggplot(aes(x = Parent, y = Child)) +
+        geom_point() +
+        theme_minimal() +
+        geom_smooth(method = "lm") +
+        xlim(c(-3,3)) +
+        ylim(c(-3, 3))
+}
+plot_parent_child(d.noisy)
+plot_parent_child(d.typical)
+plot_parent_child(d.ideal)
+
+
+# The 't value' tells the clearest story here
+summary(lm(CD_p ~ CD, data = d.noisy))
+summary(lm(CD_p ~ CD, data = d.typical))
+summary(lm(CD_p ~ CD, data = d.ideal))
+
+
+node_list_dw <- nodes |> filter(measurability == "DW") |> pull(name)
+node_list_dwo <- nodes |> 
+    filter(!str_detect(name, "_p")) |> 
+    filter(measurability %in% c("DW", "O")) |> 
+    pull(name)
+node_list_dwoop <- nodes |>  
+    filter(measurability %in% c("DW", "O")) |> 
+    pull(name)
+
+net.full = bnlearn::hc(d.sim.sem)
+net.dw = bnlearn::hc(d.sim.sem[,node_list_dw])
+net.dwo = bnlearn::hc(d.sim.sem[,node_list_dwo])
+net.dwoop = bnlearn::hc(d.ideal[,node_list_dwoop])
+
+bn.full = bnlearn::bn.fit(net.full, d.sim.sem)
+bn.dw = bnlearn::bn.fit(net.dw, d.sim.sem[,node_list_dw])
+bn.dwo = bnlearn::bn.fit(net.dwo, d.sim.sem[,node_list_dwo])
+bn.dwoop = bnlearn::bn.fit(net.dwoop, d.sim.sem[,node_list_dwoop])
+
+
+# keep working through the ?bnlearn helper. The causal query might be a good metric ?cpquery
+
+as.dagitty(net)
+plot(as.dagitty(net.dwoop))
+
+shared_nodes <- intersect(
+  bnlearn::nodes(bn.full), 
+  bnlearn::nodes(bn.dwoop)
+)
+
+library(bnlearn)
+# Query both - e.g. probability Grade is above some threshold
+# given an intervention on an observable node
+# I also want to query the original DAG. How well do these represent that
+# Ground truth from simulation
+d.typical |> 
+  filter(CD > 1) |> 
+  summarise(p_truth = mean(Grade > 1))
+
+cpquery(bn.full, 
+        event = (Grade > 1), 
+        evidence = (CD > 1),
+        method = "ls",
+        n = 1e6)
+
+cpquery(bn.full,
+        event    = (Grade > 1),
+        evidence = function(x) (x[["CD"]] > 1),
+        method   = "lw",
+        n        = 10000)
+
+cpquery(bn.dwoop, 
+        event = (Grade > 1), 
+        evidence = (CD_p > 1),
+        method = "ls")
+
+
+# OR just use adjustment sets...
+adjustmentSets(dag_s1, exposure = "S.Kn", outcome = "Grade")
+
+```
+
+Workflow:
+- Use adjustmentSets to find valid adjustment sets for each exposure-outcome pair (will need to be in both models, or all, or some??)
+- Use the simulated data with those adjustment sets as your ground truth causal estimates
+- Compare cpquery results against those — the gap tells you how much the structure learning is distorting causal conclusions vs just conditional ones
