@@ -10,7 +10,8 @@ There is `dag-dialogue-prompts.pdf` that offer suggestions for the facilitator b
 ## DAG analysis and results
 
 All analysis in the .qmd file `elicited-DAG-analysis.qmd` however there is a viewable pdf render `elicited-DAG-analysis.pdf`. 
-The analysis is broken into three sections: importing the data, a series of causal graph analysis functions, a series of visualisations. 
+The analysis is broken into four sections: importing the data, a series of causal graph analysis functions, a series of visualisations, and finally an inverse approach where we simulate what a structure learning algorithm might achieve with data relevant to the elicited models. 
+
 There is a lot more here than what might be deemed necessary (exploration was happening), so the key exploration plots are included below.
 
 Paper to come :)
