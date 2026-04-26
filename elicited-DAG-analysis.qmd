@@ -29,6 +29,7 @@ library(scales)
 library(patchwork)
 library(ggsci)
 library(ggokabeito)
+library(ggdist)
 # library(ggpubfigs)
 #library(cowplot)
 ```
@@ -552,6 +553,18 @@ dagitty_from_edge_df <- function(edges) {
 Creating a list of all the DAGs in tidy format:
 
 ``` {r}
+# making list of dagitty dags (used later)
+ddags <- list(
+    "S1" = dag_s1, 
+    "S2" = dag_s2,
+    "S3" = dag_s3,
+    "S4" = dag_s4,
+    "S5" = dag_s5,
+    "S6" = dag_s6,
+    "S7" = dag_s7,
+    "S8" = dag_s8
+    )
+
 tdag_s1 <- dag_to_tidy_graph(dag_s1)
 tdag_s2 <- dag_to_tidy_graph(dag_s2)
 tdag_s3 <- dag_to_tidy_graph(dag_s3)
@@ -3230,7 +3243,7 @@ Now we examine the feasibility of learning these models from data. A typical cou
 We design this experiement as follows. Each supplied model is used to generate synthetic data, assuming each node has an equal effect on its descendants. HOW WILL THIS DO LOOPS? For the "potentially observable" nodes a single descendant node is added, a proxy measurement node that is not the exact node measured but whose value depends only on the potentially observable node and some additional noise. The set of proxy nodes for the potentially observable ($PO$) nodes we denote ($\hat{PO}$). We choose three scenarios of data quality: idyllic, typical, and noisy. Each of these scenarios is represented by the ratio of the path effect to the noise.
 
 ``` {r}
-sim_signal_strength <- list("idyllic" = 0.9, "typical" = 0.5, "noisy" = 0.1)
+sim_signal_strength <- list("idyllic" = 0.9, "typical" = 0.4, "noisy" = 0.1)
 
 tibble(Scenario = names(sim_signal_strength),
        Beta = as.numeric(sim_signal_strength)) |>
@@ -3254,16 +3267,29 @@ Note we are working under a local assumption that each model is the 'ground trut
 # should add layout!!
 # use same x, y from main graph
 
-m_build_model_with_proxy_nodes <- function(m = "S1", x_p_nudge = 0, y_p_nudge = -2) {
+m_build_model_with_proxy_nodes <- function(m = "S1", x_p_nudge = 0, y_p_nudge = -2,
+                                           S.Kn_to_Obs = TRUE) {
     model <- m
-    nodes <- all_nodes_with_metrics |>
+    if (S.Kn_to_Obs) { # for running sims
+        all_nodes_adj <- 
+            all_nodes_with_metrics |> 
+            mutate(measurability = if_else(
+                # just picking S.Kn.Tech for S7
+                name %in% c("S.Kn", "S.Kn.Tech"), "O",
+                measurability
+            ) |> 
+                factor(levels = levels(all_nodes_with_metrics$measurability)))
+    } else {
+        all_nodes_adj <- all_nodes_with_metrics
+    }
+    nodes <- all_nodes_adj |>
         inner_join(merged_all_graph_layout_adjusted |> 
                        select(name, x, y),
                    by = "name") |> 
         filter(Model == toupper(model)) |> 
         select(name, x, y, node_group, node_type, measurability) |> 
         bind_rows( # adding proxy nodes for PO nodes
-            all_nodes_with_metrics |> 
+            all_nodes_adj |> 
                 inner_join(merged_all_graph_layout_adjusted |> 
                        select(name, x, y),
                    by = "name") |> 
@@ -3330,10 +3356,10 @@ simSEM <- partial(simulateSEM, eps = 1, standardized = F, N = 1000)
 # d.typical <- simSEM(new_dag, b.default = sim_signal_strength[["typical"]])
 # d.ideal <- simSEM(new_dag, b.default = sim_signal_strength[["ideal"]])
 
-bn_fit_model_list <- function(m_proxy_list, b) {
+bn_fit_model_list <- function(m_proxy_list, Beta = 0.6) {
     
     # getting simulated data, and subsets
-    d.sim.sem <- simSEM(m_proxy_list$dag, b.default = b)
+    d.sim.sem <- simSEM(m_proxy_list$dag, b.default = Beta)
     d.dw <- as.data.frame(d.sim.sem[,m_proxy_list$node_list_dw])
     d.dwo <- as.data.frame(d.sim.sem[,m_proxy_list$node_list_dwo])
     d.dwoop <- as.data.frame(d.sim.sem[,m_proxy_list$node_list_dwoop])
@@ -3341,8 +3367,8 @@ bn_fit_model_list <- function(m_proxy_list, b) {
     # fitting BNets
     bn.full =  bnlearn::bn.fit(bnlearn::hc(d.sim.sem), d.sim.sem)
     bn.dw =    bnlearn::bn.fit(bnlearn::hc(d.dw), d.dw)
-    bn.dwo =   bnlearn::bn.fit(bnlearn::hc(d.dw), d.dw)
-    bn.dwoop = bnlearn::bn.fit(bnlearn::hc(d.dw), d.dw)
+    bn.dwo =   bnlearn::bn.fit(bnlearn::hc(d.dwo), d.dwo)
+    bn.dwoop = bnlearn::bn.fit(bnlearn::hc(d.dwoop), d.dwoop)
     
     return( # returns a named list of simmed data and models
         list(
@@ -3361,84 +3387,24 @@ bn_fit_model_list <- function(m_proxy_list, b) {
     ))
 }
 
-
-s1.m <- m_build_model_with_proxy_nodes(m = "S1")
-s1.bn.fits <- bn_fit_model_list(s1.m, b = sim_signal_strength[["typical"]])
-
-model_list <- s1.m
-bn_list <- s1.bn.fits
-run_comparisons_on_bns <- function(model_list, bn_list,
-                                   dag, exposure = "S.Kn", outcome = "Grade") {
-    orig_adjSets <- adjustmentSets(dag, exposure = exposure, outcome = outcome, type = "all")
-    orig_adjSets_canonical <- adjustmentSets(dag, exposure = exposure, outcome = outcome, type = "minimal")
+bn_to_dagitty <- function(bn) {
+  edges <- bnlearn::arcs(bn) |> 
+    as_tibble() |> 
+    mutate(edge_str = str_c(from, " -> ", to))
+  
+  dagitty(str_c(
+    "dag{",
+    str_c(edges$edge_str, collapse = "; "),
+    "}"
+  ))
 }
+
 # Thinking of a simple dag X -> Y, we have 
 # Var(Y) = b^2 * Var(X) + Var(eps) -- eps is the noise, and here it is set to 1 by default
 # then Var(Y) = b^2 + 1
 # Since the R^2 is the ratio of the variance explained by X:
 # R^2 = Var(explained) / Var(total)
 # R^2 = b^2 / (b^2 + 1)
-
-
-causal_estimate_over_all_adj_sets <- function(
-        dag, data, 
-        exposure = "S.Kn", outcome = "Grade",
-        intervention_val = 1) {
-    # This estimates P(Grade|S.Kn, Adjustment Set) over all adjustment sets
-    # This will give a range of that the model suggests is the true effect
-    adj_sets <- adjustmentSets(dag, exposure = exposure, outcome = outcome,
-                               type = "all")
-    # Throw error if none!
-    estimate_per_set <- map(adj_sets, function(adj_set) {
-        formula_str <- str_c(outcome, " ~ ", exposure, " + ",
-                              str_c(adj_set, collapse = " + "))
-        fit <- lm(as.formula(formula_str), data = data)
-        mean(predict(fit, newdata = data |> mutate({{exposure}} := intervention_val)))
-    }
-    )
-    estimates <- unlist(estimate_per_set)
-    return(list(adjustment_set = adj_sets,
-                estimate = estimates))
-}
-
-
-
-
-# keep working through the ?bnlearn helper. The causal query might be a good metric ?cpquery
-
-as.dagitty(net)
-plot(as.dagitty(net.dwoop))
-
-shared_nodes <- intersect(
-  bnlearn::nodes(bn.full), 
-  bnlearn::nodes(bn.dwoop)
-)
-
-library(bnlearn)
-# Query both - e.g. probability Grade is above some threshold
-# given an intervention on an observable node
-# I also want to query the original DAG. How well do these represent that
-# Ground truth from simulation
-d.typical |> 
-  filter(CD > 1) |> 
-  summarise(p_truth = mean(Grade > 1))
-
-cpquery(bn.full, 
-        event = (Grade > 1), 
-        evidence = (CD > 1),
-        method = "ls",
-        n = 1e6)
-
-cpquery(bn.full,
-        event    = (Grade > 1),
-        evidence = function(x) (x[["CD"]] > 1),
-        method   = "lw",
-        n        = 10000)
-
-cpquery(bn.dwoop, 
-        event = (Grade > 1), 
-        evidence = (CD_p > 1),
-        method = "ls")
 
 dagitty_to_bn <- function(dag) {
   
@@ -3456,23 +3422,231 @@ dagitty_to_bn <- function(dag) {
   net
 }
 
-bn_to_dagitty <- function(bn) {
-  edges <- bnlearn::arcs(bn) |> 
-    as_tibble() |> 
-    mutate(edge_str = str_c(from, " -> ", to))
-  
-  dagitty(str_c(
-    "dag{",
-    str_c(edges$edge_str, collapse = "; "),
-    "}"
-  ))
+
+causal_estimate_over_all_adj_sets <- function(
+        dag, data, 
+        exposure = "S.Kn", outcome = "Grade",
+        intervention_val = 1) {
+    # This estimates P(Grade|S.Kn, Adjustment Set) over all adjustment sets
+    # This will give a range of that the model suggests is the true effect
+    adj_sets <- adjustmentSets(dag, exposure = exposure, outcome = outcome,
+                               type = "all")
+    # Throw error if none!
+    estimate_per_set <- map(adj_sets, function(adj_set) {
+        if (length(adj_set) == 0) {
+            formula_str <- str_c(outcome, " ~ ", exposure)
+        } else {
+            formula_str <- str_c(outcome, " ~ ", exposure, " + ",
+                                 str_c(adj_set, collapse = " + "))
+        }
+        fit <- lm(as.formula(formula_str), data = data)
+        mean(predict(fit, newdata = data |> mutate({{exposure}} := intervention_val)))
+    }
+    )
+    estimates <- unlist(estimate_per_set)
+    return(list(adjustment_set = adj_sets,
+                estimate = estimates))
 }
 
-bnlearn::compare(dagitty_to_bn(dag_s1), bnlearn::bn.net(bn_list$bn.full))
+generate_causal_estimate_comparisons <- function(
+        Model = "S1",
+        Beta = 0.6, # strength of signal along paths
+        # might need to change for different models depending on present nodes
+        exposure = "S.Kn", outcome = "Grade",
+        intervention_val = 1,
+        # for placiing proxy nodes
+        x_p_nudge = 0, y_p_nudge = -2
+) {
+    ground_truth_dag <- ddags[[Model]]
+    model_list <- m_build_model_with_proxy_nodes(
+        m = Model, 
+        x_p_nudge = x_p_nudge, 
+        y_p_nudge = y_p_nudge)
+    
+    bn_list <- bn_fit_model_list(model_list, b = Beta)
+    # Ground truth uses full simmed data
+    est <- partial(causal_estimate_over_all_adj_sets,
+                   exposure = exposure, outcome = outcome,
+                   intervention_val = intervention_val)
+    ground_truth <- est(dag = ground_truth_dag, data = bn_list$d.full)
+    can_estimate_dw <- 
+        (exposure %in% model_list$node_list_dw) & (outcome %in% model_list$node_list_dw)
+    can_estimate_dwo <- 
+        (exposure %in% model_list$node_list_dwo) & (outcome %in% model_list$node_list_dwo)
+    can_estimate_dwoop <- 
+        (exposure %in% model_list$node_list_dwoop) & (outcome %in% model_list$node_list_dwoop)
+    if (can_estimate_dw) {
+        dw <- est(   
+            dag = bn_to_dagitty(bn_list$bn.dw) , 
+            data = bn_list$d.dw)
+    } else {
+        dw <- list("adjustment_set" = NA, "estimate" = NA)
+        message("Nodes not found in DW node list")
+    }
+    
+    if (can_estimate_dwo) {
+        dwo <- est(  
+            dag = bn_to_dagitty(bn_list$bn.dwo) , 
+            data = bn_list$d.dwo)
+    } else {
+        dwo <- list("adjustment_set" = NA, "estimate" = NA)
+        message("Nodes not found in DWO node list")
+    }
+    
+    if (can_estimate_dwoop) {
+        dwoop <- est(
+            dag = bn_to_dagitty(bn_list$bn.dwoop) , 
+            data = bn_list$d.dwoop)
+    } else {
+        dwoop <- list("adjustment_set" = NA, "estimate" = NA)
+        message("Nodes not found in DWOOP node list")
+    }
+    
+    estimates <- tibble(
+        Model = Model,
+        DAG = c("Ground Truth", "Data Warehouse", "Observable", "Potentially Observable") |> 
+            factor(levels = c("Ground Truth", "Data Warehouse", "Observable", "Potentially Observable")),
+        exposure = exposure, 
+        outcome = outcome,
+        adjustment_sets = list(
+            ground_truth$adjustment_set,
+            dw$adjustment_set,
+            dwo$adjustment_set,
+            dwoop$adjustment_set
+        ),
+        estimate_mean = c(
+            mean(ground_truth$estimate),
+            mean(dw$estimate),
+            mean(dwo$estimate),
+            mean(dwoop$estimate)
+        ),
+        estimate_sd = c(
+            sd(ground_truth$estimate),
+            sd(dw$estimate),
+            sd(dwo$estimate),
+            sd(dwoop$estimate)
+        )
+    )
+    
+    return( # Monster list of everything we need
+        list(
+            Model = Model,
+            DAG = ground_truth_dag,
+            augmented_DAGs = model_list,
+            fitted_BN = bn_list,
+            estimates = estimates
+        )
+    )
+}
 
-# OR just use adjustment sets...
+s1_estimates <- 
+    generate_causal_estimate_comparisons(
+        Model = "S1", 
+        Beta = sim_signal_strength[["typical"]])
+s2_estimates <- 
+    generate_causal_estimate_comparisons(
+        Model = "S2", 
+        Beta = sim_signal_strength[["typical"]])
+# s3_estimates <- # ERROR! This one is cycle, and no adj sets
+#     generate_causal_estimate_comparisons(
+#         Model = "S3", 
+#         Beta = sim_signal_strength[["typical"]])
+s4_estimates <- # Acyclic, 
+    generate_causal_estimate_comparisons(
+        Model = "S4", 
+        Beta = sim_signal_strength[["typical"]])
+s5_estimates <- 
+    generate_causal_estimate_comparisons(
+        Model = "S5", 
+        Beta = sim_signal_strength[["typical"]])
+# s6_estimates <- # cyclic, no adj sets
+#     generate_causal_estimate_comparisons(
+#         Model = "S6", 
+#         Beta = sim_signal_strength[["typical"]])
+# s7_estimates <- # Different exposure - not sure what to do
+#     generate_causal_estimate_comparisons(
+#         Model = "S7", 
+#         exposure = "S.Kn.Tech",
+#         Beta = sim_signal_strength[["typical"]])
+s8_estimates <- 
+    generate_causal_estimate_comparisons(
+        Model = "S8", 
+        Beta = sim_signal_strength[["typical"]])
 
-adjustmentSets(dag_s1, exposure = "S.Kn", outcome = "Grade")
+all_estimates <-
+    s1_estimates$estimates |> 
+    bind_rows(s2_estimates$estimates) |> 
+    # bind_rows(s3_estimates$estimates) |> 
+    bind_rows(s4_estimates$estimates) |> 
+    bind_rows(s5_estimates$estimates) |> 
+    # bind_rows(s6_estimates$estimates) |> 
+    # bind_rows(s7_estimates$estimates) |> 
+    bind_rows(s8_estimates$estimates) 
+
+all_estimates |>
+    filter(!is.na(estimate_mean)) |> 
+    group_by(Model) |> 
+    mutate(gt_est_diff = estimate_mean - estimate_mean[DAG == "Ground Truth"] ) |> 
+    ungroup() |> 
+    ggplot(aes(color = DAG, y = str_c(Model))) + 
+    geom_pointinterval(
+        aes(x = gt_est_diff, 
+            xmin = gt_est_diff - 5 *estimate_sd, 
+            xmax = gt_est_diff + 5 *estimate_sd),
+           alpha = 0.6, size = 1
+    ) +
+    geom_pointinterval(
+        aes(x = gt_est_diff, 
+            xmin = gt_est_diff - 3 *estimate_sd, 
+            xmax = gt_est_diff + 3 *estimate_sd),
+           alpha = 0.6, size = 3
+    ) +
+    geom_pointinterval(
+        aes(x = gt_est_diff, 
+            xmin = gt_est_diff - 1 *estimate_sd, 
+            xmax = gt_est_diff + 1 *estimate_sd),
+           alpha = 0.6, size = 5
+    ) +
+    theme_minimal()
+
+# keep working through the ?bnlearn helper. The causal query might be a good metric ?cpquery
+
+
+# shared_nodes <- intersect(
+#   bnlearn::nodes(bn.full), 
+#   bnlearn::nodes(bn.dwoop)
+# )
+
+```
+
+``` {r}
+# 
+# library(bnlearn)
+# # Query both - e.g. probability Grade is above some threshold
+# # given an intervention on an observable node
+# # I also want to query the original DAG. How well do these represent that
+# # Ground truth from simulation
+# d.typical |> 
+#   filter(CD > 1) |> 
+#   summarise(p_truth = mean(Grade > 1))
+# 
+# cpquery(bn.full, 
+#         event = (Grade > 1), 
+#         evidence = (CD > 1),
+#         method = "ls",
+#         n = 1e6)
+# 
+# cpquery(bn.full,
+#         event    = (Grade > 1),
+#         evidence = function(x) (x[["CD"]] > 1),
+#         method   = "lw",
+#         n        = 10000)
+# 
+# cpquery(bn.dwoop, 
+#         event = (Grade > 1), 
+#         evidence = (CD_p > 1),
+#         method = "ls")
+
 
 ```
 
