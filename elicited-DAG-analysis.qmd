@@ -3606,28 +3606,33 @@ all_estimates <-
         gt_est_diff = estimate_mean - estimate_mean[DAG == "Ground Truth"] )|> 
     ungroup() |> 
     mutate(error = estimate_std_errors + replace_na(estimate_sd, 0)) |> 
-    select(Model, DAG, estimate, error, gt_est_diff, everything())
+    select(Model, DAG, estimate_mean, error, gt_est_diff, everything())
 
+dodge_amt <- 0.1
 all_estimates |>
-    ggplot(aes(color = DAG, y = str_c(Model))) + 
+    mutate(
+        y_pos = as.numeric(factor(Model)) + 
+            (as.numeric(factor(DAG)) - mean(as.numeric(factor(DAG)))) * dodge_amt
+    ) |> 
+    ggplot(aes(color = DAG, y = y_pos)) + 
     geom_pointinterval(
         aes(x = gt_est_diff, 
-            xmin = gt_est_diff - 3 * error, 
-            xmax = gt_est_diff + 3 * error),
+            xmin = gt_est_diff - 2 * error, 
+            xmax = gt_est_diff + 2 * error),
            alpha = 0.3, size = 1
-    ) +
-    geom_pointinterval(
-        aes(x = gt_est_diff, 
-            xmin = gt_est_diff - 2 *error, 
-            xmax = gt_est_diff + 2 *error),
-           alpha = 0.6, size = 3
     ) +
     geom_pointinterval(
         aes(x = gt_est_diff, 
             xmin = gt_est_diff - 1 *error, 
             xmax = gt_est_diff + 1 *error),
-           alpha = 0.9, size = 5
+           alpha = 0.8, size = 3
     ) +
+scale_y_continuous(
+        breaks = seq_along(levels(factor(all_estimates$Model))),
+        labels = levels(factor(all_estimates$Model)),
+        name = "Model"
+    ) +
+    xlab("Deviation from ground truth estimate") +
     theme_minimal()
 
 # keep working through the ?bnlearn helper. The causal query might be a good metric ?cpquery
