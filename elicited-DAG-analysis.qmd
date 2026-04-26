@@ -3267,8 +3267,10 @@ Note we are working under a local assumption that each model is the 'ground trut
 # should add layout!!
 # use same x, y from main graph
 
-m_build_model_with_proxy_nodes <- function(m = "S1", x_p_nudge = 0, y_p_nudge = -2,
-                                           S.Kn_to_Obs = TRUE) {
+m_build_model_with_proxy_nodes <- function(
+        m = "S1", 
+        x_p_nudge = 0, y_p_nudge = -2,
+        S.Kn_to_Obs = TRUE) {
     model <- m
     if (S.Kn_to_Obs) { # for running sims
         all_nodes_adj <- 
@@ -3440,12 +3442,22 @@ causal_estimate_over_all_adj_sets <- function(
                                  str_c(adj_set, collapse = " + "))
         }
         fit <- lm(as.formula(formula_str), data = data)
-        mean(predict(fit, newdata = data |> mutate({{exposure}} := intervention_val)))
+        preds <- predict(fit,
+                     newdata = data |>
+                         mutate({{ exposure }} := intervention_val),
+                     se.fit = TRUE)
+    
+    list(
+        mean = mean(preds$fit),
+        se   = sqrt(mean(preds$se.fit^2))
+    )
     }
     )
-    estimates <- unlist(estimate_per_set)
+    estimates <- map_dbl(estimate_per_set, "mean")
+    std_errors <- map_dbl(estimate_per_set, "se")
     return(list(adjustment_set = adj_sets,
-                estimate = estimates))
+                estimate = estimates,
+                std_error = std_errors))
 }
 
 generate_causal_estimate_comparisons <- function(
@@ -3463,7 +3475,7 @@ generate_causal_estimate_comparisons <- function(
         x_p_nudge = x_p_nudge, 
         y_p_nudge = y_p_nudge)
     
-    bn_list <- bn_fit_model_list(model_list, b = Beta)
+    bn_list <- bn_fit_model_list(model_list, Beta = Beta)
     # Ground truth uses full simmed data
     est <- partial(causal_estimate_over_all_adj_sets,
                    exposure = exposure, outcome = outcome,
@@ -3519,6 +3531,12 @@ generate_causal_estimate_comparisons <- function(
             mean(dw$estimate),
             mean(dwo$estimate),
             mean(dwoop$estimate)
+        ),
+        estimate_std_errors = c(
+            mean(ground_truth$std_error),
+            mean(dw$std_error),
+            mean(dwo$std_error),
+            mean(dwoop$std_error)
         ),
         estimate_sd = c(
             sd(ground_truth$estimate),
@@ -3581,31 +3599,34 @@ all_estimates <-
     bind_rows(s5_estimates$estimates) |> 
     # bind_rows(s6_estimates$estimates) |> 
     # bind_rows(s7_estimates$estimates) |> 
-    bind_rows(s8_estimates$estimates) 
-
-all_estimates |>
+    bind_rows(s8_estimates$estimates) |> 
     filter(!is.na(estimate_mean)) |> 
     group_by(Model) |> 
-    mutate(gt_est_diff = estimate_mean - estimate_mean[DAG == "Ground Truth"] ) |> 
+    mutate(
+        gt_est_diff = estimate_mean - estimate_mean[DAG == "Ground Truth"] )|> 
     ungroup() |> 
+    mutate(error = estimate_std_errors + replace_na(estimate_sd, 0)) |> 
+    select(Model, DAG, estimate, error, gt_est_diff, everything())
+
+all_estimates |>
     ggplot(aes(color = DAG, y = str_c(Model))) + 
     geom_pointinterval(
         aes(x = gt_est_diff, 
-            xmin = gt_est_diff - 5 *estimate_sd, 
-            xmax = gt_est_diff + 5 *estimate_sd),
-           alpha = 0.6, size = 1
+            xmin = gt_est_diff - 3 * error, 
+            xmax = gt_est_diff + 3 * error),
+           alpha = 0.3, size = 1
     ) +
     geom_pointinterval(
         aes(x = gt_est_diff, 
-            xmin = gt_est_diff - 3 *estimate_sd, 
-            xmax = gt_est_diff + 3 *estimate_sd),
+            xmin = gt_est_diff - 2 *error, 
+            xmax = gt_est_diff + 2 *error),
            alpha = 0.6, size = 3
     ) +
     geom_pointinterval(
         aes(x = gt_est_diff, 
-            xmin = gt_est_diff - 1 *estimate_sd, 
-            xmax = gt_est_diff + 1 *estimate_sd),
-           alpha = 0.6, size = 5
+            xmin = gt_est_diff - 1 *error, 
+            xmax = gt_est_diff + 1 *error),
+           alpha = 0.9, size = 5
     ) +
     theme_minimal()
 
