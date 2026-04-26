@@ -3615,24 +3615,44 @@ all_estimates |>
             (as.numeric(factor(DAG)) - mean(as.numeric(factor(DAG)))) * dodge_amt
     ) |> 
     ggplot(aes(color = DAG, y = y_pos)) + 
+    # geom_pointinterval(
+    #     aes(x = gt_est_diff, 
+    #         xmin = gt_est_diff - 2 * error, 
+    #         xmax = gt_est_diff + 2 * error),
+    #        alpha = 0.3, size = 1
+    # ) +
     geom_pointinterval(
-        aes(x = gt_est_diff, 
-            xmin = gt_est_diff - 2 * error, 
-            xmax = gt_est_diff + 2 * error),
-           alpha = 0.3, size = 1
-    ) +
-    geom_pointinterval(
-        aes(x = gt_est_diff, 
-            xmin = gt_est_diff - 1 *error, 
+        aes(x = gt_est_diff,
+            xmin = gt_est_diff - 1 *error,
             xmax = gt_est_diff + 1 *error),
            alpha = 0.8, size = 3
     ) +
-scale_y_continuous(
+    scale_y_continuous(
         breaks = seq_along(levels(factor(all_estimates$Model))),
         labels = levels(factor(all_estimates$Model)),
         name = "Model"
     ) +
     xlab("Deviation from ground truth estimate") +
+    theme_minimal()
+
+all_estimates |>
+    mutate(
+        y_pos = as.numeric(factor(Model)) + 
+            (as.numeric(factor(DAG)) - mean(as.numeric(factor(DAG)))) * dodge_amt
+    ) |> 
+    ggplot(aes(color = DAG, y = y_pos)) + 
+    geom_pointinterval(
+        aes(x = estimate_mean, 
+            xmin = estimate_mean - 1 *error, 
+            xmax = estimate_mean + 1 *error),
+           alpha = 0.8, size = 3
+    ) +
+    scale_y_continuous(
+        breaks = seq_along(levels(factor(all_estimates$Model))),
+        labels = levels(factor(all_estimates$Model)),
+        name = "Model"
+    ) +
+    xlab("Estimated effect") +
     theme_minimal()
 
 # keep working through the ?bnlearn helper. The causal query might be a good metric ?cpquery
