@@ -3630,6 +3630,7 @@ all_estimates <-
 
 dodge_amt <- 0.1
 all_estimates |>
+    filter(DAG != "Observable") |> 
     mutate(
         y_pos = as.numeric(factor(Model)) + 
             (as.numeric(factor(DAG)) - mean(as.numeric(factor(DAG)))) * dodge_amt
@@ -3652,12 +3653,15 @@ all_estimates |>
         labels = levels(factor(all_estimates$Model)),
         name = "Model"
     ) +
+    ggokabeito::scale_color_okabe_ito() +
     xlab("Deviation from ground truth estimate") +
     theme_minimal()
 
 all_estimates |>
+    filter(DAG != "Potentially Observable") |> 
     mutate(
-        y_pos = as.numeric(factor(Model)) + 
+        y_pos = 
+            as.numeric(factor(Model)) + 
             (as.numeric(factor(DAG)) - mean(as.numeric(factor(DAG)))) * dodge_amt
     ) |> 
     ggplot(aes(color = DAG, y = y_pos)) + 
@@ -3667,6 +3671,7 @@ all_estimates |>
             xmax = estimate_mean + 1 *error),
            alpha = 0.8, size = 3
     ) +
+    ggokabeito::scale_color_okabe_ito() +
     scale_y_continuous(
         breaks = seq_along(levels(factor(all_estimates$Model))),
         labels = levels(factor(all_estimates$Model)),
@@ -3675,61 +3680,8 @@ all_estimates |>
     xlab("Estimated effect") +
     theme_minimal()
 
-# keep working through the ?bnlearn helper. The causal query might be a good metric ?cpquery
-
-
-# shared_nodes <- intersect(
-#   bnlearn::nodes(bn.full), 
-#   bnlearn::nodes(bn.dwoop)
-# )
-
 ```
 
-``` {r}
-# 
-# library(bnlearn)
-# # Query both - e.g. probability Grade is above some threshold
-# # given an intervention on an observable node
-# # I also want to query the original DAG. How well do these represent that
-# # Ground truth from simulation
-# d.typical |> 
-#   filter(CD > 1) |> 
-#   summarise(p_truth = mean(Grade > 1))
-# 
-# cpquery(bn.full, 
-#         event = (Grade > 1), 
-#         evidence = (CD > 1),
-#         method = "ls",
-#         n = 1e6)
-# 
-# cpquery(bn.full,
-#         event    = (Grade > 1),
-#         evidence = function(x) (x[["CD"]] > 1),
-#         method   = "lw",
-#         n        = 10000)
-# 
-# cpquery(bn.dwoop, 
-#         event = (Grade > 1), 
-#         evidence = (CD_p > 1),
-#         method = "ls")
-
-
-```
-
-Workflow:
-- Use adjustmentSets to find valid adjustment sets for each exposure-outcome pair (will need to be in both models, or all, or some??)
-- Use the simulated data with those adjustment sets as your ground truth causal estimates
-- Compare cpquery results against those — the gap tells you how much the structure learning is distorting causal conclusions vs just conditional ones
-
-Maybe the adjustment sets should be for:
-- Knowledge -> Grade
-- AI use -> Grade
-- AI use -> Knowledge
-
-Or perhaps just the first, and we definitely look at AI use as one of the conditional probabilities? Seems closest to the paper problem.
-
-Ok, how about:
-- Estimate P(Grade|do(S.Kn)) in each: use the suggested adjustment sets. Maybe a Bayesian approach to get uncertainty (later if runtime allows)
 
 ``` {r}
 plot_bnlearn_comparisons <- function(s_estimates) {
