@@ -3238,9 +3238,14 @@ Path importance - what about the sets of implied conditional independancies? Is 
 
 # Simulation
 
-Now we examine the feasibility of learning these models from data. A typical counter to going to the effort of eliciting these models from domain experts is that they can be learned from the data alone. However, we have seen here that much of the data is not present in the institutions ecosystem, with the nodes being deemed inherintly latent (`r round(100*(sum(all_nodes_with_metrics$measurability == "L") / nrow(all_nodes_with_metrics)), 1)`%), potentially observable (`r round(100*(sum(all_nodes_with_metrics$measurability == "PO") / nrow(all_nodes_with_metrics)), 1)`%), observable but not currently in the data (`r round(100*(sum(all_nodes_with_metrics$measurability == "O") / nrow(all_nodes_with_metrics)), 1)`%), or already measured and stored in the current data ecosystem (`r round(100*(sum(all_nodes_with_metrics$measurability == "DW") / nrow(all_nodes_with_metrics)), 1)`%).
 
-We design this experiement as follows. Each supplied model is used to generate synthetic data, assuming each node has an equal effect on its descendants. HOW WILL THIS DO LOOPS? For the "potentially observable" nodes a single descendant node is added, a proxy measurement node that is not the exact node measured but whose value depends only on the potentially observable node and some additional noise. The set of proxy nodes for the potentially observable ($PO$) nodes we denote ($\hat{PO}$). We choose three scenarios of data quality: idyllic, typical, and noisy. Each of these scenarios is represented by the ratio of the path effect to the noise.
+Now we examine the feasibility of learning these models from data. A typical counter to going to the effort of eliciting these models from domain experts is that they can be learned from the data alone. However, we have seen here that much of the data is not present in the institutions ecosystem, with the nodes being deemed inherently latent (`r round(100*(sum(all_nodes_with_metrics$measurability == "L") / nrow(all_nodes_with_metrics)), 1)`%), potentially observable (`r round(100*(sum(all_nodes_with_metrics$measurability == "PO") / nrow(all_nodes_with_metrics)), 1)`%), observable but not currently in the data (`r round(100*(sum(all_nodes_with_metrics$measurability == "O") / nrow(all_nodes_with_metrics)), 1)`%), or already measured and stored in the current data ecosystem (`r round(100*(sum(all_nodes_with_metrics$measurability == "DW") / nrow(all_nodes_with_metrics)), 1)`%).
+
+## Creating a simulated data set
+
+We design this experiment as follows. We ask the question can a causal graph discovered from available data generate similar answers to the problem of assuring assessment? This translates to getting an unbiased estimate of Student Knowledge on Grade. As such 3 of the models are excluded, lacking sufficient adjustment sets (2 models) or having broken student knowledge into multiple nodes (1 model). 
+For the "potentially observable" nodes a single descendant node is added, so that $N \rightarrow N_P$, a proxy measurement node that is not the exact node measured but whose value depends only on the potentially observable node and some additional noise. The set of proxy nodes for the potentially observable ($PO$) nodes we denote ($\hat{PO}$). 
+Each of the 5 remaining GCMs, with their additional proxy measurement nodes, is used to generate a synthetic data set. We assuming each node has an equal linear effect on its descendants ($\beta=0.4$), generated using `simulateSEM` of the `dagitty` package in R. This treats all variables as continuous with mean 0 and variance 1. 
 
 ``` {r}
 sim_signal_strength <- list("idyllic" = 0.9, "typical" = 0.4, "noisy" = 0.1)
@@ -3252,8 +3257,6 @@ tibble(Scenario = names(sim_signal_strength),
        ) |> 
     knitr::kable(digits = 3)
 ```
-
-Here we see that in a "typical" scenario we assume that each path coefficient is `r sim_signal_strength[["typical"]]`. 
 
 We then apply a structure learning algorithm to each models simulated data in three phases: learning from the currently measured data only (only DW nodes), learning from all observable nodes (DW and O) nodes, and finally learning from all potentially available data (DW, O and $\hat{PO}$). This represents increasing levels of resourcing applied to learning the underlying causal structure, given the model. 
 
@@ -3426,16 +3429,21 @@ dagitty_to_bn <- function(dag) {
 
 
 causal_estimate_over_all_adj_sets <- function(
-        dag, data, 
+        dag, data, latent_nodes = NULL,
         exposure = "S.Kn", outcome = "Grade",
         intervention_val = 1) {
     # This estimates P(Grade|S.Kn, Adjustment Set) over all adjustment sets
     # This will give a range of that the model suggests is the true effect
     adj_sets <- adjustmentSets(dag, exposure = exposure, outcome = outcome,
                                type = "all")
+    if (!is.null(latent_nodes)) {
+        # remove any with latent nodes 
+        adj_sets <- keep(adj_sets, \(x) !any(x %in% latent_nodes))
+    }
     # Throw error if none!
     estimate_per_set <- map(adj_sets, function(adj_set) {
         if (length(adj_set) == 0) {
+            message("No adjustment sets found")
             formula_str <- str_c(outcome, " ~ ", exposure)
         } else {
             formula_str <- str_c(outcome, " ~ ", exposure, " + ",
@@ -3480,7 +3488,15 @@ generate_causal_estimate_comparisons <- function(
     est <- partial(causal_estimate_over_all_adj_sets,
                    exposure = exposure, outcome = outcome,
                    intervention_val = intervention_val)
+    
     ground_truth <- est(dag = ground_truth_dag, data = bn_list$d.full)
+    expert_dag <- est(
+        dag = ground_truth_dag, 
+        data = bn_list$d.full,
+        latent_nodes = 
+            all_nodes_adj |> 
+            filter(Model == Model, measurability == "L") |> 
+            pull(name))
     can_estimate_dw <- 
         (exposure %in% model_list$node_list_dw) & (outcome %in% model_list$node_list_dw)
     can_estimate_dwo <- 
@@ -3516,30 +3532,34 @@ generate_causal_estimate_comparisons <- function(
     
     estimates <- tibble(
         Model = Model,
-        DAG = c("Ground Truth", "Data Warehouse", "Observable", "Potentially Observable") |> 
-            factor(levels = c("Ground Truth", "Data Warehouse", "Observable", "Potentially Observable")),
+        DAG = c("Ground Truth", "Expert DAG", "Data Warehouse", "Observable", "Potentially Observable") |> 
+            factor(levels = c("Ground Truth", "Expert DAG","Data Warehouse", "Observable", "Potentially Observable")),
         exposure = exposure, 
         outcome = outcome,
         adjustment_sets = list(
             ground_truth$adjustment_set,
+            expert_dag$adjustment_set,
             dw$adjustment_set,
             dwo$adjustment_set,
             dwoop$adjustment_set
         ),
         estimate_mean = c(
             mean(ground_truth$estimate),
+            mean(expert_dag$estimate),
             mean(dw$estimate),
             mean(dwo$estimate),
             mean(dwoop$estimate)
         ),
         estimate_std_errors = c(
             mean(ground_truth$std_error),
+            mean(expert_dag$std_error),
             mean(dw$std_error),
             mean(dwo$std_error),
             mean(dwoop$std_error)
         ),
         estimate_sd = c(
             sd(ground_truth$estimate),
+            sd(expert_dag$estimate),
             sd(dw$estimate),
             sd(dwo$estimate),
             sd(dwoop$estimate)
@@ -3569,7 +3589,7 @@ s2_estimates <-
 #     generate_causal_estimate_comparisons(
 #         Model = "S3", 
 #         Beta = sim_signal_strength[["typical"]])
-s4_estimates <- # Acyclic, 
+s4_estimates <- # Acyclic: THIS IS SLOW!!
     generate_causal_estimate_comparisons(
         Model = "S4", 
         Beta = sim_signal_strength[["typical"]])
@@ -3710,3 +3730,62 @@ Or perhaps just the first, and we definitely look at AI use as one of the condit
 
 Ok, how about:
 - Estimate P(Grade|do(S.Kn)) in each: use the suggested adjustment sets. Maybe a Bayesian approach to get uncertainty (later if runtime allows)
+
+``` {r}
+plot_bnlearn_comparisons <- function(s_estimates) {
+    p_orig <- s_estimates$DAG |> 
+        dag_to_tidy_graph() %N>%
+        mutate(name = str_remove(name, "_p$")) |> 
+        g_plot_fine(weight_nodes = F)
+    p_dwo <- s_estimates$fitted_BN$bn.dwo |>
+        bn_to_dagitty() |> 
+        dag_to_tidy_graph() %N>%
+        mutate(name = str_remove(name, "_p$")) |> 
+        g_plot_fine(weight_nodes = F)
+    p_dwoop <- s_estimates$fitted_BN$bn.dwoop |> 
+        bn_to_dagitty() |> 
+        dag_to_tidy_graph() %N>%
+        mutate(name = str_remove(name, "_p$")) |> 
+        g_plot_fine(weight_nodes = F)
+    return(p_orig + p_dwo + p_dwoop)
+}
+
+plot_bnlearn_coarse_comparison <- function(s_estimates) {
+    p_orig <- s_estimates$DAG |> 
+        dag_to_tidy_graph() %N>%
+        mutate(name = str_remove(name, "_p$")) |>
+        g_coarsen_dag_by_ng() |> 
+        g_plot_coarse()
+    p_dwo <- s_estimates$fitted_BN$bn.dwo |>
+        bn_to_dagitty() |> 
+        dag_to_tidy_graph() %N>%
+        mutate(name = str_remove(name, "_p$")) |> 
+        g_coarsen_dag_by_ng() |> 
+        g_plot_coarse()
+    p_dwoop <- s_estimates$fitted_BN$bn.dwoop |> 
+        bn_to_dagitty() |> 
+        dag_to_tidy_graph() %N>%
+        mutate(name = str_remove(name, "_p$")) |> 
+        g_coarsen_dag_by_ng() |> 
+        g_plot_coarse()
+    return(p_orig  / p_dwo )
+    
+}
+
+plot_bnlearn_coarse_comparison(s_estimates = s1_estimates) + ggtitle("Model1: Actual coarsened DAG (top) vs coarsened learned DAG from observable nodes")
+plot_bnlearn_coarse_comparison(s_estimates = s2_estimates)+ ggtitle("Model 2: Actual coarsened DAG (top) vs coarsened learned DAG from observable nodes")
+plot_bnlearn_coarse_comparison(s_estimates = s4_estimates)+ ggtitle("Model 4: Actual coarsened DAG (top) vs coarsened learned DAG from observable nodes")
+ plot_bnlearn_coarse_comparison(s_estimates = s5_estimates)+ ggtitle("Model 5: Actual coarsened DAG (top) vs coarsened learned DAG from observable nodes")
+plot_bnlearn_coarse_comparison(s_estimates = s6_estimates)+ ggtitle("Model 6: Actual coarsened DAG (top) vs coarsened learned DAG from observable nodes")
+ plot_bnlearn_coarse_comparison(s_estimates = s8_estimates)+ ggtitle("Model 8: Actual coarsened DAG (top) vs coarsened learned DAG from observable nodes")
+
+
+
+plot_bnlearn_comparisons(s_estimates = s1_estimates)
+plot_bnlearn_comparisons(s_estimates = s2_estimates)
+plot_bnlearn_comparisons(s_estimates = s4_estimates)
+plot_bnlearn_comparisons(s_estimates = s5_estimates)
+plot_bnlearn_comparisons(s_estimates = s6_estimates)
+plot_bnlearn_comparisons(s_estimates = s8_estimates)
+
+```
