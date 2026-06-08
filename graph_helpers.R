@@ -54,8 +54,7 @@ g_all_descendants_edge_list <- function(g) {
     return(expanded_edges)
 }
 
-
-
+# Superseeded by g_cluster_graph
 g_merge_nodes <- function(g, regex_from, string_to, no.self.loops = TRUE) {
     # merges nodes in a graph by renaming edgelist
     g_el <- g_edgelist(g)
@@ -184,9 +183,9 @@ g_summary_metrics <- function(g){
 
 d_count_paths <- function(dag) {
     tibble(
-        total     = nrow(as_tibble(paths(dag, limit = 1e4))),
-        backdoor  = nrow(as_tibble(paths(backDoorGraph(dag), limit = 1e4))),
-        frontdoor = nrow(as_tibble(paths(dag, directed = TRUE, limit = 1e4)))
+        total     = nrow(as_tibble(dagitty::paths(dag, limit = 1e4))),
+        backdoor  = nrow(as_tibble(dagitty::paths(dagitty::backDoorGraph(dag), limit = 1e4))),
+        frontdoor = nrow(as_tibble(dagitty::paths(dag, directed = TRUE, limit = 1e4)))
     )
 }
 
@@ -200,6 +199,29 @@ switches_exist <- function(d, X, Y) {
         )
 }
 
+# Merging two graphs --------------
+
+g_merge <- function(g1, g2) {
+    nodes <- bind_rows(
+        g1 %N>% as_tibble(),
+        g2 %N>% as_tibble()
+    ) |> distinct(name, .keep_all = TRUE)
+    
+    edges <- bind_rows(
+        g1 %E>% as_tibble() |> 
+            mutate(across(from:to, \(i) igraph::V(as.igraph(g1))$name[i])),
+        g2 %E>% as_tibble() |> 
+            mutate(across(from:to, \(i) igraph::V(as.igraph(g2))$name[i]))
+    ) |> 
+        group_by(from, to) |> 
+        summarise( # Any meta-data on nodes needs to be collapsed
+            across(where(is.numeric), \(x)sum(x)),
+            across(where(is.character), \(c) str_c(c, collapse = ";")),
+            across(where(is.factor), \(c) str_c(c, collapse = ";")),
+            .groups = "drop")
+    
+    tbl_graph(nodes = nodes, edges = edges)
+}
 
 # Graph clustering / coarsening ---------------
 

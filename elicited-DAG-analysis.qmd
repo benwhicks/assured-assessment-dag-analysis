@@ -319,13 +319,12 @@ code_node_type <- function(n) {
 ### Coding node measurability
 
 
-From the node groups, describe how easy (or not) they are to measure. This is in three levels:
+From the node groups, describe how easy (or not) they are to measure. This is completed by someone familiar to the data warehouse at the institution:
 
-- Directly: Data is available or easy enough to get directly for the node
-- Proxy: Node is not directly measurable, but with work a direct proxy for the node could be found.
-- Intangible: Node is not currently measurable, and unlikely to have a direct proxy. 
-
-By "direct proxy" I mean one step away in the causal graph. So if $X,Y$ is not measurably, but $Z$ is then $X\rightarrow Z$ would mean that $X$ is measurable by proxy. However if at best we can only justify $X \rightarrow Y \rightarrow Z$ then $X$ is intangible. 
+- **DW** - _Data Warehouse_: Data is already collected and stored in the data warehouse of the institution.
+- **O** - _Observable_: Node is not currently collected data, but would be possible to measure and collect with resourcing.
+- **PO** - _Potentially Observable_:  Node is not measured, and would be difficult to measure directly. It is possible to find a direct proxy and measure that instead, such as a survey instrument.
+- **L** - _Latent_: Node is not measured and would be difficult to even find a direct proxy for the latent construct. 
 
 
 ``` {r node-measurability}
@@ -376,13 +375,7 @@ code_node_measurability <- function(node) {
 
 ## Graph helper functions
 
-Convention is that these all start with `g_` and accept a tidygraph object as input. 
-
-### Graph manipulator functions
-
-``` {r}
-
-```
+Convention is that these all start with `g_` and accept a `tidygraph` object as input. Functions outlined in the `graph_helpers.R` script. 
 
 ### Graph metrics functions
 
@@ -390,8 +383,8 @@ Generating a range of edge metrics - comparisons across models. Want to label ed
 
 ``` {r fancy-edge-weight}
 all_nodes <- 
-    imap(tdags, \(g,m) g_nodelist(g) |> mutate(Model = m)) |> 
-    list_rbind()
+    imap(tdags, \(g,m) g_nodelist(g)) |> 
+    list_rbind(names_to = "Model")
 
 all_edges <- 
     imap(tdags, \(g, m) g_edgelist(g) |> mutate(Model = m)) |> 
@@ -401,9 +394,8 @@ all_edges <-
     select(-switched)
 
 all_possible_edges <- 
-    imap(tdags, 
-         \(g, m) g_possible_edges(g) |> mutate(Model = m)) |> 
-    list_rbind()
+    imap(tdags, \(g, m) g_possible_edges(g)) |> 
+    list_rbind(names_to = "Model")
 
 max_possible_edges <- 
     all_possible_edges |> 
@@ -482,12 +474,27 @@ merged_all_graph <- tbl_graph(nodes = merged_nodes, edges = merged_edges)
 
 This is based on the coding of the nodes into node groups. 
 
-Here we merge nodes into node groups before generating plot later. This has the potential to likely introduce loops depending on how the constructs were built. 
+Here we merge nodes into node groups before generating plot later. This has the potential to introduce loops depending on how the constructs were built, so we need to check the causal consistency between the fine-grained graph and the clustered / merged / higher-level graph. 
 
 ``` {r}
-merged_coarse_models <- 
-    g_cluster_graph(merge)
-    
+node_group_cluster_graph_from_merged <- 
+    g_cluster_graph(merged_all_graph, code_node_group)
+
+tcdags_node_group <- 
+    map(tdags, \(g)g_cluster_graph(g, code_node_group)) 
+
+node_group_cluster_graph_from_clusters <- 
+    g_merge(
+        g_merge(
+            g_merge(tcdags_node_group[[1]], tcdags_node_group[[2]]),
+            g_merge(tcdags_node_group[[3]], tcdags_node_group[[4]])
+        ),
+        g_merge(
+            g_merge(tcdags_node_group[[5]], tcdags_node_group[[6]]),
+            g_merge(tcdags_node_group[[7]], tcdags_node_group[[8]])
+        )
+    )
+
 ```
 
 # Graph metrics
@@ -497,256 +504,103 @@ merged_coarse_models <-
 ### Model level metrics
 
 ``` {r}
-# TODO: change using imap and named list instead
-all_paths_summary <- tibble(
-  Model = str_c("S", 1:8),
-  DAG   = list(dag_s1, dag_s2, dag_s3, dag_s4, dag_s5, dag_s6, dag_s7, dag_s8)
-) %>%
-  mutate(
-    counts = map(DAG, ~ d_count_paths(.x))
-  ) %>%
-  unnest(counts)
+all_paths_summary <- 
+    imap(ddags, \(d, n) d_count_paths(d)) |> 
+    list_rbind(names_to = "Model") 
 
-all_paths <- tibble(
-    Model = str_c("S", 1:8),
-    Paths.df = list(
-        as_tibble(paths(dag_s1,  limit = 5000)),
-        as_tibble(paths(dag_s2,  limit = 5000)),
-        as_tibble(paths(dag_s3,  limit = 5000)),
-        as_tibble(paths(dag_s4,  limit = 5000)),
-        as_tibble(paths(dag_s5,  limit = 5000)),
-        as_tibble(paths(dag_s6,  limit = 5000)),
-        as_tibble(paths(dag_s7,  limit = 5000)),
-        as_tibble(paths(dag_s8,  limit = 5000))
-    )) |> 
-    mutate(
-        n_paths = map_int(Paths.df, nrow),
-        n_open = map_int(Paths.df, ~sum(pull(.,open))),
-        p_open = map_dbl(Paths.df, ~mean(pull(.,open)))
-    )
+all_paths <- 
+    imap(
+        ddags,
+        \(d, n) bind_cols(
+            tibble(Model = n),
+            dagitty::paths(d, limit = 5000)) |> 
+            group_by(Model) |> 
+            summarise(
+                paths = list(paths),
+                n_paths = n(),
+                n_open = sum(open),
+                p_open = mean(open)
+            ))|> 
+    list_rbind()
 
-# Yes, this really should be implemented using map_df or something more elegant
+
 dag_complexity_metrics <- 
-    bind_cols(tibble(Model = "S1"),
-          g_summary_metrics(tdag_s1) |> 
-              as_tibble()) |> 
-    bind_rows(
-        bind_cols(tibble(Model = "S2"),
-          g_summary_metrics(tdag_s2) |> 
-              as_tibble()) 
+    imap(tdags, \(g, n)  as_tibble(g_summary_metrics(g))
     ) |> 
-    bind_rows(
-        bind_cols(tibble(Model = "S3"),
-          g_summary_metrics(tdag_s3) |> 
-              as_tibble()) 
-    ) |> 
-    bind_rows(
-        bind_cols(tibble(Model = "S4"),
-          g_summary_metrics(tdag_s4) |> 
-              as_tibble()) 
-    ) |> 
-    bind_rows(
-        bind_cols(tibble(Model = "S5"),
-          g_summary_metrics(tdag_s5) |> 
-              as_tibble()) 
-    ) |> 
-    bind_rows(
-        bind_cols(tibble(Model = "S6"),
-          g_summary_metrics(tdag_s6) |> 
-              as_tibble()) 
-    ) |> 
-    bind_rows(
-        bind_cols(tibble(Model = "S7"),
-          g_summary_metrics(tdag_s7) |> 
-              as_tibble()) 
-    ) |> 
-    bind_rows(
-        bind_cols(tibble(Model = "S8"),
-          g_summary_metrics(tdag_s8) |> 
-              as_tibble()) 
-    ) |> 
+    list_rbind(names_to = "Model") |> 
     inner_join(
-        tibble(
-            Model = str_c("S", 1:8),
-            n_adj_sets = map_int(list(dag_s1, dag_s2, dag_s3, dag_s4, 
-                                      dag_s5, dag_s6, dag_s7, dag_s8), 
-                                 ~length(adjustmentSets(.)))
-        ), by = "Model"
+        imap(
+            ddags, 
+            \(d, n) 
+            tibble(Model = n) |> 
+                mutate(
+                    n_adj_sets = length(dagitty::adjustmentSets(d)))) |> 
+            list_rbind(), 
+        by = "Model"
     ) |> 
     inner_join(all_paths_summary, by = "Model")
 ```
 
-### Graph dissimilarity
+### Graph dissimilarity??
 
-Taken from suggestions in [Grames et al.  (2022)](https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/2041-210X.13940) this calculates the graph dissimilarity from [Shieber et al. (2017)](https://www.nature.com/articles/ncomms13928).
 
 ``` {r}
-source("d-measures.R") # Functions from Grames et al. 
-```
+coarsened_tdags <- imap(
+    tdags, 
+    \(g,n)
+    g_cluster_graph(g, code_node_group))
 
-Creating distance matrices for both the fine and coarse graphs. The coarse seem to give a better 'feel' for the differences in the models. In the end a mixture distnace is created using the average of the dissimilarity at each level: *node*, *group* and *type*.
-
-``` {r}
-coarsened_tdags <- map(tdags, g_coarsen_dag_by_ng)
-coarsest_tdags <- map(tdags, g_coarsen_dag_by_type)
-
-d_matrix_fine <-  
-    data.frame(
-        S1 = map_dbl(tdags, ~calc_dissimilarity(., tdag_s1)),
-        S2 = map_dbl(tdags, ~calc_dissimilarity(., tdag_s2)),
-        S3 = map_dbl(tdags, ~calc_dissimilarity(., tdag_s3)),
-        S4 = map_dbl(tdags, ~calc_dissimilarity(., tdag_s4)),
-        S5 = map_dbl(tdags, ~calc_dissimilarity(., tdag_s5)),
-        S6 = map_dbl(tdags, ~calc_dissimilarity(., tdag_s6)),
-        S7 = map_dbl(tdags, ~calc_dissimilarity(., tdag_s7)),
-        S8 = map_dbl(tdags, ~calc_dissimilarity(., tdag_s8))
-        )
-
-d_matrix_coarse <-  
-    data.frame(
-        S1 = map_dbl(coarsened_tdags, ~calc_dissimilarity(., coarsened_tdags[[1]])),
-        S2 = map_dbl(coarsened_tdags, ~calc_dissimilarity(., coarsened_tdags[[2]])),
-        S3 = map_dbl(coarsened_tdags, ~calc_dissimilarity(., coarsened_tdags[[3]])),
-        S4 = map_dbl(coarsened_tdags, ~calc_dissimilarity(., coarsened_tdags[[4]])),
-        S5 = map_dbl(coarsened_tdags, ~calc_dissimilarity(., coarsened_tdags[[5]])),
-        S6 = map_dbl(coarsened_tdags, ~calc_dissimilarity(., coarsened_tdags[[6]])),
-        S7 = map_dbl(coarsened_tdags, ~calc_dissimilarity(., coarsened_tdags[[7]])),
-        S8 = map_dbl(coarsened_tdags, ~calc_dissimilarity(., coarsened_tdags[[8]]))
-        )
-
-d_matrix_coarsest <-  
-    data.frame(
-        S1 = map_dbl(coarsest_tdags, ~calc_dissimilarity(., coarsest_tdags[[1]])),
-        S2 = map_dbl(coarsest_tdags, ~calc_dissimilarity(., coarsest_tdags[[2]])),
-        S3 = map_dbl(coarsest_tdags, ~calc_dissimilarity(., coarsest_tdags[[3]])),
-        S4 = map_dbl(coarsest_tdags, ~calc_dissimilarity(., coarsest_tdags[[4]])),
-        S5 = map_dbl(coarsest_tdags, ~calc_dissimilarity(., coarsest_tdags[[5]])),
-        S6 = map_dbl(coarsest_tdags, ~calc_dissimilarity(., coarsest_tdags[[6]])),
-        S7 = map_dbl(coarsest_tdags, ~calc_dissimilarity(., coarsest_tdags[[7]])),
-        S8 = map_dbl(coarsest_tdags, ~calc_dissimilarity(., coarsest_tdags[[8]]))
-        )
-
-d_matrix <- # trying coarse only - seems a better representation
-    tibble(from = str_c("S", 1:8)) |> 
-    bind_cols(d_matrix_coarse)
-
-d_matrix <- bind_cols( # weighted average: 3 parts coarse, 1 part fine. Fine alone seems to miss the point
-    tibble(from = str_c("S", 1:8)),
-    (d_matrix_fine + d_matrix_coarse + d_matrix_coarsest) / 3)
-
-
-d_edges <- d_matrix |> 
-    pivot_longer(cols = -from,
-                 names_to = "to") |> 
-  filter(value > 0) |> 
-  rename(edge_d = value) |> 
-    mutate(from = factor(from), to = factor(to)) |> 
-    filter(as.integer(from) < as.integer(to)) |> 
-    arrange(edge_d) |> 
-    mutate(edge_w = 1 / edge_d)
+coarsest_tdags <- imap(
+    tdags, 
+    \(g,n)
+    g_cluster_graph(g, code_node_type))
 
 ```
-
 
 ### Node group level metrics
 
 ``` {r}
-all_nodes_with_metrics <- g_node_metrics(tdag_s1) |> 
-    mutate(Model = "S1") |> 
-    bind_rows(
-        g_node_metrics(tdag_s2) |> 
-            mutate(Model = "S2")
-    ) |> 
-    bind_rows(
-        g_node_metrics(tdag_s3) |> 
-            mutate(Model = "S3")
-    ) |> 
-    bind_rows(
-        g_node_metrics(tdag_s4) |> 
-            mutate(Model = "S4")
-    ) |> 
-    bind_rows(
-        g_node_metrics(tdag_s5) |> 
-            mutate(Model = "S5")
-    ) |> 
-    bind_rows(
-        g_node_metrics(tdag_s6) |> 
-            mutate(Model = "S6")
-    ) |> 
-    bind_rows(
-        g_node_metrics(tdag_s7) |> 
-            mutate(Model = "S7")
-    ) |> 
-    bind_rows(
-        g_node_metrics(tdag_s8) |> 
-            mutate(Model = "S8")
-    ) 
+all_nodes_with_metrics <- 
+    imap(tdags, \(g,n) g_node_metrics(g)) |> 
+    list_rbind(names_to = "Model")
 ```
-
-Idea: can we get each nodes path length to a measurable (downstream / descendant) node?
-
-``` {r}
-g_min_distance_to_node <- function(g, node) {
-    g %N>%
-        mutate(dist_to = distances(as.igraph(.), 
-                                   v = V(as.igraph(.)), 
-                                 to = node, 
-                                 mode = "out")[1,]) |> 
-        as_tibble()
-}
-
-g_distances <- function(g) {
-    d <- 
-        distances(as.igraph(g), mode = "out")
-    row_nodes <- rownames(d)
-    bind_cols(tibble(from = row_nodes),
-              as_tibble(d)) |> 
-        pivot_longer(-from, names_to = "to", values_to = "distance")
-}
-
-g_distancce_to_traced <- function(g) { #old
-    g_distances(g) |> 
-        inner_join(all_nodes_with_metrics |> 
-                       # filter(measurability == "Traced") |> 
-                       filter(measurability == "DW") |> 
-                       select(to = name) |> 
-                       distinct()) |> 
-        group_by(from) |> 
-        summarise(dist_to_trace = min(distance)) |> 
-        rename(name = from)
-}
-
-all_model_nodes_distance_to_traced <- 
-    tibble(Model = "S1") |> bind_cols(g_distancce_to_traced(tdag_s1)) |> 
-    bind_rows(tibble(Model = "S2") |> bind_cols(g_distancce_to_traced(tdag_s2))) |> 
-    bind_rows(tibble(Model = "S3") |> bind_cols(g_distancce_to_traced(tdag_s3))) |> 
-    bind_rows(tibble(Model = "S4") |> bind_cols(g_distancce_to_traced(tdag_s4))) |> 
-    bind_rows(tibble(Model = "S5") |> bind_cols(g_distancce_to_traced(tdag_s5))) |> 
-    bind_rows(tibble(Model = "S6") |> bind_cols(g_distancce_to_traced(tdag_s6))) |> 
-    bind_rows(tibble(Model = "S7") |> bind_cols(g_distancce_to_traced(tdag_s7))) |> 
-    bind_rows(tibble(Model = "S8") |> bind_cols(g_distancce_to_traced(tdag_s8))) 
-
-all_nodes_median_dist_to_traded <- 
-    all_model_nodes_distance_to_traced |> 
-    group_by(name) |> 
-    summarise(m_dist_to_trace = median(dist_to_trace))
-
-all_node_groups_distance_to_traced <- 
-    all_model_nodes_distance_to_traced |> 
-    mutate(node_group = code_node_group(name)) |> 
-    group_by(Model, node_group) |> 
-    summarise(m_dist_to_trace = mean(dist_to_trace))
-
-
-
-```
-
 
 ## Joining metrics and session data
 
 ``` {r}
 gcm_metrics <- 
     inner_join(session_data, dag_complexity_metrics, by = "Model") 
+```
+# Causal consistency
+
+## Preservation of L1, L2
+
+L1 (association) and L2 (intervention / do) levels on the causal hierarchy can be examined at a graph level through:
+
+- $\mathcal{L}_1$ Examining all conditional probability implications. If these are preserved between graphs then the two graphs are $\mathcal{L}_1$-consistent.
+- $\mathcal{L}_2$ Examining all 'do' operator implications. If these are preserved between graphs then the two graphs are $\mathcal{L}_2$-consistent. 
+- $\mathcal{L}_3$ Is not explored - this would probably require a SCM, not just the DAG.
+
+``` {r}
+# building function to generate L1, L2, algebraic statements
+
+nds <- tdag_s1 %N>% pull(name)
+pairs <- tidyr::expand_grid(from = nds, to = nds) |> 
+        filter(from != to)
+
+# Getting conditional independencies
+# This is a list structure - so better as that. X, Y and Z (Z is the set of vars)
+dag_s1 |> 
+    dagitty::impliedConditionalIndependencies() 
+
+# Getting adjustments sets
+pairs |> 
+    rowwise() |> 
+    mutate(
+        adj_g = list(dagitty::adjustmentSets(dag_s1, exposure = from, outcome = to)),
+        n_sets_g   = length(adj_g),
+        identifiable = n_sets_g > 0
+    )
 ```
 
 # Visualisations
