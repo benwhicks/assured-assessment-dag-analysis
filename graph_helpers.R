@@ -85,22 +85,11 @@ dag_merge_nodes <- function(dag, mapping) {
 }
 
 g_get_adjustment_sets <- function(g, exposure = "S.Kn", outcome = "Grade") {
-    if (!is_acyclic(as.igraph(g))) {
-        return(list("Cyclic" = "No adjustment sets"))
-    }
-    # Extract edges
-    edges <- g_edgelist(g)
-    
-    # Build dagitty syntax
-    edges_str <- edges %>%
-        mutate(rel = paste0(from, " -> ", to)) %>%
-        pull(rel)
-    
-    dagitty_str <- paste("dag {", paste(edges_str, collapse = "\n  "), "}", sep="\n")
-    dagitty_obj <- dagitty(dagitty_str)
-    
     # Compute adjustment sets
-    sets <- adjustmentSets(dagitty_obj, exposure = exposure, outcome = outcome)
+    sets <- adjustmentSets(
+        tidy_graph_to_dag(g), 
+        exposure = exposure, 
+        outcome = outcome)
     as.list(sets)
 }
 
@@ -187,6 +176,23 @@ d_count_paths <- function(dag) {
         backdoor  = nrow(as_tibble(dagitty::paths(dagitty::backDoorGraph(dag), limit = 1e4))),
         frontdoor = nrow(as_tibble(dagitty::paths(dag, directed = TRUE, limit = 1e4)))
     )
+}
+
+# Getting L1 level conditions
+d_implied_conditional_independencies <- function(dag) {
+    # Takes in a DAGitty object and exports a data frame
+    # X, Y are the conditionally independent variables (order not important)
+    # Z is the set of conditions under which they are independent, as a list
+    dag |> 
+        dagitty::impliedConditionalIndependencies() |> 
+        map(\(x) tibble(X = x$X, Y = x$Y, Z = list(x$Z))) |> 
+        list_rbind() |> 
+        arrange(X, Y)
+}
+
+g_implied_conditional_independencies <- function(g) {
+    tidy_graph_to_dag(g) |> 
+        d_implied_conditional_independencies()
 }
 
 switches_exist <- function(d, X, Y) {

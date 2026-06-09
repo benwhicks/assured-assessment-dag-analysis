@@ -590,8 +590,10 @@ pairs <- tidyr::expand_grid(from = nds, to = nds) |>
 
 # Getting conditional independencies
 # This is a list structure - so better as that. X, Y and Z (Z is the set of vars)
-dag_s1 |> 
-    dagitty::impliedConditionalIndependencies() 
+L1_statements <- 
+    ddags |> 
+    imap(\(d,m) d_implied_conditional_independencies(d)) |> 
+    list_rbind(names_to = "Model")
 
 # Getting adjustments sets
 pairs |> 
