@@ -163,6 +163,17 @@ ci_fingerprint <- function(m, vars = names(m),
   distinct(out)
 }
 
+# TODO: Use CI fingerprint to do a similar version of fuzzy L2 but for L1
+#.      Worth noting that this will be symmetric, whereas L2 is not. 
+#.      Desiridata - needs to work with shared nodes in a similar way
+#       to fuzzy_L2_consistency
+
+fuzzy_L1_consistency <- function(gX, gY) {
+    # Compares two graphs for L1 causal consistency
+    # Graphs may have only some shared nodes.
+    # worth returning the number of shared nodes!
+}
+
 
 ci_compare <- function(m1, m2, ...) {
     # should this be on the projection instead?
@@ -318,6 +329,93 @@ l2_summary <- function(g_from, g_to, ...) {
       prop_recipe_fails  = mean(identified_from & !coalesce(any_valid, TRUE)),
       mean_set_jaccard   = mean(set_jaccard, na.rm = TRUE)
     )
+}
+
+# manual code
+
+adj_fingerprint 
+# getting the ZX, idX etc from function below
+
+fuzzy_L2_consistency <- function(gX, gY) {
+    # Takes in two tidygraph / dagitty objects
+    # Examines them for L2 causal consistency through checking if, for each pair,
+    # (x,y) where x is an ancestor of y, and (x.y) are in both graphs, 
+    # the adjustment sets for P(y|do(x)) meet the following criteria:
+    # - If P(y|do(x)) is identifiable in g1 then it is identifiable in g2
+    # - If P(y|do(x)) is identifiable in g2 then it is identifiable in g1
+    # - For the canonical adjustment set Z1 = z1, z2, ..., zn in g1 
+    #   and the canonical adjustment set Z2 = w1, w2, ..., wm then 
+    #   (a) Z1 not in Z2 are not in V(g2)
+    #   (b) Z2 not in Z1 are not in V(g1)
+    #   The count of the nodes invalidating (a) and (b) is ErrXY, ErrYX
+    if (!class(gX) == "dagitty") gX <- tidy_graph_to_dag(gX)
+    if (!class(gY) == "dagitty") gY <- tidy_graph_to_dag(gY)
+    
+    shared <- intersect(names(gX), names(gY))
+    
+    pairs <- expand_grid(x = shared, y = shared) |> 
+        filter(x != y)
+    
+    canAdjSet <- function(g, exposure, outcome) {
+        adjustmentSets(x = g, 
+                       exposure = exposure,
+                       outcome = outcome,
+                       type = "canonical") |> 
+            unlist() |> 
+            unname() |> 
+            as.character() |> 
+            sort()
+    }
+    
+    df.out <- 
+        pairs |> 
+        rowwise() |> 
+        mutate(
+            canonical_ZX = pmap(
+                list(x,y),
+                \(x,y)
+                canAdjSet(g1, x, y)
+            ),
+            canonical_ZY = pmap(
+                list(x,y),
+                \(x,y)
+                canAdjSet(g2, x, y)
+            )
+            ) |> 
+        mutate(
+            idX = length(canonical_ZX) > 0,
+            idY = length(canonical_ZX) > 0
+        ) |> 
+        mutate(
+            idXY = !(idY & !idX),
+            idYX = !(idX & !idY)
+            ) |> 
+        mutate(
+            # nodes in adjustment sets in both models
+            ZXshared = list(canonical_ZX[canonical_ZX %in% shared]),
+            ZYshared = list(canonical_ZY[canonical_ZY %in% shared])
+                ) |> 
+        mutate( # Err is count of nodes in shared 
+            ZXsharedMax = length(ZXshared),
+            ZYsharedMax = length(ZYshared),
+        ) |> 
+        mutate(
+            ErrXY = sum(!(ZXshared %in% ZYshared)),
+            ErrYX = sum(!(ZYshared %in% ZXshared))
+        ) |> 
+        select(x, y, idXY, idYX, ErrXY, everything())
+    
+    idXY <-  mean(df.out$idXY)
+    idYX <-  mean(df.out$idYX)
+    ErrXY <- mean(df.out$ErrXY)
+    ErrYX <- mean(df.out$ErrYX)
+    
+    return(list(
+        idXY = idXY, idYX = idYX,
+        ErrXY = ErrXY, ErrYX = ErrYX,
+        df = df.out, shared_nodes = shared
+    ))
+    
 }
 
 # ===================================================================
