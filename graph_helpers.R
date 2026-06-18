@@ -84,6 +84,27 @@ dag_merge_nodes <- function(dag, mapping) {
     g_m
 }
 
+# Causal consistency measures
+
+# Getting L1 level conditions
+d_implied_conditional_independencies <- function(dag) {
+    # Takes in a DAGitty object and exports a data frame
+    # X, Y are the conditionally independent variables (order not important)
+    # Z is the set of conditions under which they are independent, as a list
+    dag |> 
+        dagitty::impliedConditionalIndependencies() |> 
+        map(\(x) tibble(X = x$X, Y = x$Y, Z = list(x$Z))) |> 
+        list_rbind() |> 
+        arrange(X, Y)
+}
+
+g_implied_conditional_independencies <- function(g) {
+    tidy_graph_to_dag(g) |> 
+        d_implied_conditional_independencies()
+}
+
+
+# For L2 consistency
 g_get_adjustment_sets <- function(g, exposure = "S.Kn", outcome = "Grade") {
     # Compute adjustment sets
     sets <- adjustmentSets(
@@ -91,6 +112,37 @@ g_get_adjustment_sets <- function(g, exposure = "S.Kn", outcome = "Grade") {
         exposure = exposure, 
         outcome = outcome)
     as.list(sets)
+}
+
+has_directed_path <- function(g, from, to) {
+    ig   <- as.igraph(g)
+    from_idx <- which(igraph::V(ig)$name == from)
+    to_idx   <- which(igraph::V(ig)$name == to)
+    igraph::distances(ig, v = from_idx, to = to_idx, mode = "out") |> 
+        is.finite() 
+}
+
+g_get_adjustment_sets_from_node_list <- function(g, node_list) {
+    # Returns as a data frame with exposure, outcome, list of 
+    # adjustment sets (list of lists)
+    df_of_tests <-
+        cross_join(
+            tibble(exposure = node_list),
+            tibble(outcome = node_list)
+        ) |> 
+        filter(exposure != outcome) |> 
+        rowwise() |> 
+        mutate(has_path = map2_lgl(exposure, outcome, \(e, o) has_directed_path(g, e, o)))
+
+    
+    
+    
+    df_of_tests |> 
+        mutate(
+            adjustment_sets = pmap(
+                list(exposure, outcome),
+                \(exp, out) g_get_adjustment_sets(g, exp, out)
+            ))
 }
 
 
@@ -172,28 +224,17 @@ g_summary_metrics <- function(g){
 
 d_count_paths <- function(dag) {
     tibble(
-        total     = nrow(as_tibble(dagitty::paths(dag, limit = 1e4))),
-        backdoor  = nrow(as_tibble(dagitty::paths(dagitty::backDoorGraph(dag), limit = 1e4))),
-        frontdoor = nrow(as_tibble(dagitty::paths(dag, directed = TRUE, limit = 1e4)))
+        total     = nrow(as_tibble(dagitty::paths(dag, limit = 1e4, 
+                                                  from = from, to = to))),
+        backdoor  = nrow(as_tibble(dagitty::paths(dagitty::backDoorGraph(dag), 
+                                                  from = from, to = to,
+                                                  limit = 1e4))),
+        frontdoor = nrow(as_tibble(dagitty::paths(dag, directed = TRUE, 
+                                                  from = from, to = to,
+                                                  limit = 1e4)))
     )
 }
 
-# Getting L1 level conditions
-d_implied_conditional_independencies <- function(dag) {
-    # Takes in a DAGitty object and exports a data frame
-    # X, Y are the conditionally independent variables (order not important)
-    # Z is the set of conditions under which they are independent, as a list
-    dag |> 
-        dagitty::impliedConditionalIndependencies() |> 
-        map(\(x) tibble(X = x$X, Y = x$Y, Z = list(x$Z))) |> 
-        list_rbind() |> 
-        arrange(X, Y)
-}
-
-g_implied_conditional_independencies <- function(g) {
-    tidy_graph_to_dag(g) |> 
-        d_implied_conditional_independencies()
-}
 
 switches_exist <- function(d, X, Y) {
     # takes a data frame and adorns a column "switched" based on
@@ -229,6 +270,129 @@ g_merge <- function(g1, g2) {
     tbl_graph(nodes = nodes, edges = edges)
 }
 
+# Comparing two graphs ----------------
+
+align_adjacency_matrices <- function(g1, g2, common = TRUE, nodes = NULL) {
+    
+    nodes1 <- g1 %N>% pull(name)
+    nodes2 <- g2 %N>% pull(name)
+    
+    if (is.null(nodes)) {
+        nodes <- if (common) intersect(nodes1, nodes2) else union(nodes1, nodes2)
+    }
+    
+    adj1 <- as_adjacency_matrix(g1, sparse = FALSE)
+    adj2 <- as_adjacency_matrix(g2, sparse = FALSE)
+    
+    mat1 <- matrix(0, length(nodes), 
+                   length(nodes), 
+                   dimnames = list(nodes, nodes))
+    mat2 <- matrix(0, length(nodes), 
+                   length(nodes), 
+                   dimnames = list(nodes, nodes))
+    
+    # Restrict to nodes that are both in the matrix AND in the target node set
+    shared1 <- intersect(rownames(adj1), nodes)
+    shared2 <- intersect(rownames(adj2), nodes)
+    
+    mat1[shared1, shared1] <- adj1[shared1, shared1]
+    mat2[shared2, shared2] <- adj2[shared2, shared2]
+    
+    list(m1 = mat1, m2 = mat2, nodes = nodes)
+}
+
+g_latent_projection <- function(g, latent_nodes) {
+    
+    ig <- as.igraph(g)
+    all_nodes <- igraph::V(ig)$name
+    
+    include_nodes <- setdiff(all_nodes, latent_nodes)
+    latent_nodes <- setdiff(all_nodes, include_nodes)
+    
+    if (length(latent_nodes) == 0) {
+        message("No latent nodes in graph, returning original graph")
+        return(g)
+    }
+    
+    edge_exists <- function(ig, from, to) {
+        paste(from, to) %in% 
+            paste(igraph::tail_of(ig, igraph::E(ig))$name,
+                  igraph::head_of(ig, igraph::E(ig))$name)
+    }
+    
+    ig_proj <- ig
+    
+    for (node in latent_nodes) {
+        parents  <- igraph::neighbors(ig_proj, node, mode = "in")$name
+        children <- igraph::neighbors(ig_proj, node, mode = "out")$name
+        
+        causal_edges <- expand_grid(from = parents, to = children) |> 
+            filter(from != to,
+                   !edge_exists(ig_proj, from, to))
+        
+        confound_edges <- expand_grid(from = children, to = children) |> 
+            filter(from != to,
+                   !edge_exists(ig_proj, from, to))
+        
+        new_edges <- bind_rows(causal_edges, confound_edges)
+        
+        if (nrow(new_edges) > 0) {
+            ig_proj <- igraph::add_edges(
+                ig_proj,
+                as.vector(rbind(new_edges$from, new_edges$to))
+            )
+        }
+    }
+    
+    igraph::delete_vertices(ig_proj, latent_nodes) |> 
+        as_tbl_graph()
+}
+
+g_to_cpdag <- function(g) {
+    m <- as_adjacency_matrix(g, sparse = FALSE)
+    cpdag_m <- pcalg::dag2cpdag(m)
+    # dag2cpdag drops dimnames, so restore from original
+    dimnames(cpdag_m) <- dimnames(m)
+    igraph::graph_from_adjacency_matrix(cpdag_m, mode = "directed") |>
+        as_tbl_graph()
+}
+
+
+g_hamming_dist <- function(g1, g2, common = TRUE, nodes = NULL, normalise = FALSE, 
+                           all_mistakes_as_one = FALSE, use_cp_dag = TRUE) {
+    if (use_cp_dag) {
+        g1 <- g_to_cpdag(g1)
+        g2 <- g_to_cpdag(g2)
+    }
+    M <- align_adjacency_matrices(g1, g2, common = common, nodes = nodes)
+    hd <- SID::hammingDist(M$m1, M$m2, allMistakesOne = all_mistakes_as_one)
+
+    if (normalise) {
+        n <- length(M$nodes)
+        hd <- hd / (n * (n - 1))
+    }
+    
+    return(hd)    
+}
+
+g_structural_intervention_dist <- function(g1, g2,
+                                           common = TRUE, nodes = NULL) {
+    M <- align_adjacency_matrices(g1, g2, common = common, nodes = nodes)
+    sid_raw <- SID::structIntervDist(M$m1, M$m2)
+    
+    n <- length(M$nodes)
+    max_sid <- n * (n - 1)
+    
+    result <- list_flatten(list(sid_raw, nodes = M$nodes))
+    result$sid.normalised           <- result$sid / max_sid
+    result$max_sid       <- max_sid
+    
+    result
+}
+    
+    
+
+
 # Graph clustering / coarsening ---------------
 
 g_cluster_graph <- function(g, .f,
@@ -248,7 +412,7 @@ g_cluster_graph <- function(g, .f,
     # 1. adjustment set error: so list of fine-grained adjustment sets, apply .f
     # to the variables in those - are these the same as the adjustment sets in 
     # the cluster DAG?
-    # 2. Same as above, but for conditional indepenence / d-seperation
+    # 2. Same as above, but for conditional independence / d-separation
     # 3. Same, but for sets of descendants and ancestors
     # Q: Can these metrics be used for general DAG comparison?
     
