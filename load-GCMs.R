@@ -445,7 +445,7 @@ H.Tut [pos="0.213,-1.306"]
 LD.Task [pos="-1.134,-0.983"]
 LD.Task.Code [pos="-1.867,-0.480"]
 LD.Task.Grp [pos="-1.249,-0.224"]
-LD.Task.Other [pos="-0.591,-0.662"]
+LD.Other [pos="-0.591,-0.662"]
 LD.Task.Prac [pos="-1.460,-0.550"]
 LD.Task.Write [pos="-1.152,-0.598"]
 S.Cp.Grp [exposure,pos="-0.859,-0.142"]
@@ -468,9 +468,9 @@ LD.Task -> LD.Task.Prac
 LD.Task -> LD.Task.Write
 LD.Task.Code -> LD.Task.Grp
 LD.Task.Grp -> S.Cp.Grp
-LD.Task.Other -> S.Cp.Grp
-LD.Task.Other -> S.Cp.Ind
-LD.Task.Other -> S.Kn
+LD.Other -> S.Cp.Grp
+LD.Other -> S.Cp.Ind
+LD.Other -> S.Kn
 LD.Task.Prac -> LD.Task.Grp
 LD.Task.Write -> LD.Task.Grp
 S.Cp.Grp -> Grade

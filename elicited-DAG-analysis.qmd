@@ -9,7 +9,9 @@ format:
 
 ## Go through node classification for causal consistency
 
-Is it possible to do the node coding into groups whilst preserving causal consistency according to Annand et al? This means that work with the cluster DAGs loses no L1 or L2 causal consistency. 
+Is it possible to do the node coding into groups whilst preserving causal consistency according to Annand et al? This means that work with the cluster DAGs loses no L1 or L2 causal consistency.
+
+This seems to be done - need to run checks. Have been using `ancestral_inflation` (L1?) and `cluster_adjustment_audit` (L2?) but a ci fingerprint one might be good if needed. 
 
 ## Implement fuzzy L1 comparisons
 
