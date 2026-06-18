@@ -55,7 +55,7 @@ dagitty_from_edge_df <- function(edges) {
 # ======= Graph helpers ===========
 
 gcm_nodelist <- function(g) {
-    if (class(dag)[[1]] == "dagitty") g <- dagitty_to_tidygraph(g)
+    if (class(g)[[1]] == "dagitty") g <- dagitty_to_tidygraph(g)
     # tidygraph to a tibble of nodes
     g %N>%
         as_tibble() |> 
@@ -63,7 +63,7 @@ gcm_nodelist <- function(g) {
 }
 
 gcm_edgelist <- function(g){ 
-    if (class(dag)[[1]] == "dagitty") g <- dagitty_to_tidygraph(g)
+    if (class(g)[[1]] == "dagitty") g <- dagitty_to_tidygraph(g)
     # tidygraph to tibble of edges
     g %E>%
         as_tibble() %>%
@@ -75,7 +75,7 @@ gcm_edgelist <- function(g){
 }
 
 gcm_possible_edges <- function(g) {
-    if (class(dag)[[1]] == "dagitty") g <- dagitty_to_tidygraph(g)
+    if (class(g)[[1]] == "dagitty") g <- dagitty_to_tidygraph(g)
     # m <- as.character(substitute(g)) |>  
     #     str_remove("^tdag_")
     g_nodelist(g) |> 
@@ -85,7 +85,7 @@ gcm_possible_edges <- function(g) {
 }
 
 gcm_all_descendants_edge_list <- function(g) {
-    if (class(dag)[[1]] == "dagitty") g <- dagitty_to_tidygraph(g)
+    if (class(g)[[1]] == "dagitty") g <- dagitty_to_tidygraph(g)
     # Get descendant edges
     expanded <- igraph::distances(g, mode = "out") < Inf
     closure_edges <- which(expanded, arr.ind = TRUE)
