@@ -2,27 +2,68 @@
 
 ## Functions to help manipulate dagitty and tidygraph objects
 
-# exposures(dag_s1)
-library(igraph)
 library(dagitty)
+library(tidygraph)
+library(igraph)
+library(dplyr)
+library(purrr)
+library(tidyr)
 
-cluster_DAGitty <- function(
-        dag, 
-        # A function that takes a node name and returns the cluster
-        phi = NULL, 
-        # Alternatively, a named list of the partitions
-        partition = NULL) {
-    
+# ===== Translators: DAGitty; tidygraph ==========
+
+#' tbl_graph (directed, with a `name` node attribute) -> dagitty DAG
+tidygraph_to_dagitty <- function(tg, node_var = "name") {
+    stopifnot(inherits(tg, "tbl_graph"))
+    nm <- as_tibble(activate(tg, nodes))[[node_var]]
+    el <- tg |> activate(edges) |> as_tibble()
+    lines <- c(nm, if (nrow(el) > 0) paste(nm[el$from], "->", nm[el$to]))
+    dagitty(paste0("dag {\n", paste(lines, collapse = "\n"), "\n}"))
 }
 
-g_nodelist <- function(g) {
+tg_to_dag <- tidygraph_to_dagitty
+
+#' dagitty graph (DAG or MAG) -> tbl_graph, edge `type` preserved
+dagitty_to_tidygraph <- function(g) {
+    v <- names(g)
+    e <- dagitty::edges(g)
+    tbl_graph(
+        nodes = tibble(name = v),
+        edges = tibble(
+            from = match(e$v, v),
+            to   = match(e$w, v),
+            type = e$e                       # "->", "<->", "--"
+        ),
+        directed = TRUE
+    )
+}
+
+dag_to_tg <- dagitty_to_tidygraph
+
+dagitty_from_edge_df <- function(edges) {
+    # edges is a df with "from" and "to"
+    dagitty(str_c(
+        "dag{", 
+        str_c(edges |> 
+                  mutate(edge_string = str_c(from, "->", to)) |> 
+                  pull(edge_string),
+              collapse = ";\n")
+        ,"}"))
+}
+
+
+
+# ======= Graph helpers ===========
+
+gcm_nodelist <- function(g) {
+    if (class(dag)[[1]] == "dagitty") g <- dagitty_to_tidygraph(g)
     # tidygraph to a tibble of nodes
     g %N>%
         as_tibble() |> 
         select(name) 
 }
 
-g_edgelist <- function(g){ 
+gcm_edgelist <- function(g){ 
+    if (class(dag)[[1]] == "dagitty") g <- dagitty_to_tidygraph(g)
     # tidygraph to tibble of edges
     g %E>%
         as_tibble() %>%
@@ -33,7 +74,8 @@ g_edgelist <- function(g){
         select(from, to)
 }
 
-g_possible_edges <- function(g) {
+gcm_possible_edges <- function(g) {
+    if (class(dag)[[1]] == "dagitty") g <- dagitty_to_tidygraph(g)
     # m <- as.character(substitute(g)) |>  
     #     str_remove("^tdag_")
     g_nodelist(g) |> 
@@ -42,7 +84,8 @@ g_possible_edges <- function(g) {
                        rename(to = name))
 }
 
-g_all_descendants_edge_list <- function(g) {
+gcm_all_descendants_edge_list <- function(g) {
+    if (class(dag)[[1]] == "dagitty") g <- dagitty_to_tidygraph(g)
     # Get descendant edges
     expanded <- igraph::distances(g, mode = "out") < Inf
     closure_edges <- which(expanded, arr.ind = TRUE)
@@ -54,101 +97,13 @@ g_all_descendants_edge_list <- function(g) {
     return(expanded_edges)
 }
 
-# Superseeded by g_cluster_graph
-g_merge_nodes <- function(g, regex_from, string_to, no.self.loops = TRUE) {
-    # merges nodes in a graph by renaming edgelist
-    g_el <- g_edgelist(g)
-    g_el_m <- g_el |> 
-        mutate(from = str_replace(from, regex_from, string_to),
-               to = str_replace(to, regex_from, string_to)) |> 
-        distinct()
-    tbl_graph(edges = g_el_m)
-}
 
-# same but for dags
-dag_merge_nodes <- function(dag, mapping) {
-    # mapping is a named list, like: c("Old.var" = "Merged.var", "Old.var2" = "Merged.var")
-    g <- graph_from_data_frame(dagitty::edges(dag))
-    old_names <- V(g)$name
-    # Replace names using mapping if present, else keep original
-    new_names <- ifelse(old_names %in% names(mapping),
-                        mapping[old_names],
-                        old_names)
-    V(g)$name <- unname(new_names)
-    new_g <- simplify(g, remove.loops = TRUE, remove.multiple = TRUE)
-    
-    # Convert back to dagitty
-    edges_m <- igraph::as_data_frame(new_g, what="edges")
-    dag_str <- paste0("dag { ", paste0(edges_m$from, " -> ", edges_m$to, collapse="; "), " }")
-    g_m <- dagitty(dag_str)
-    g_m
-}
-
-# Causal consistency measures
-
-# Getting L1 level conditions
-d_implied_conditional_independencies <- function(dag) {
-    # Takes in a DAGitty object and exports a data frame
-    # X, Y are the conditionally independent variables (order not important)
-    # Z is the set of conditions under which they are independent, as a list
-    dag |> 
-        dagitty::impliedConditionalIndependencies() |> 
-        map(\(x) tibble(X = x$X, Y = x$Y, Z = list(x$Z))) |> 
-        list_rbind() |> 
-        arrange(X, Y)
-}
-
-g_implied_conditional_independencies <- function(g) {
-    tidy_graph_to_dag(g) |> 
-        d_implied_conditional_independencies()
-}
-
-
-# For L2 consistency
-g_get_adjustment_sets <- function(g, exposure = "S.Kn", outcome = "Grade") {
-    # Compute adjustment sets
-    sets <- adjustmentSets(
-        tidy_graph_to_dag(g), 
-        exposure = exposure, 
-        outcome = outcome)
-    as.list(sets)
-}
-
-has_directed_path <- function(g, from, to) {
-    ig   <- as.igraph(g)
-    from_idx <- which(igraph::V(ig)$name == from)
-    to_idx   <- which(igraph::V(ig)$name == to)
-    igraph::distances(ig, v = from_idx, to = to_idx, mode = "out") |> 
-        is.finite() 
-}
-
-g_get_adjustment_sets_from_node_list <- function(g, node_list) {
-    # Returns as a data frame with exposure, outcome, list of 
-    # adjustment sets (list of lists)
-    df_of_tests <-
-        cross_join(
-            tibble(exposure = node_list),
-            tibble(outcome = node_list)
-        ) |> 
-        filter(exposure != outcome) |> 
-        rowwise() |> 
-        mutate(has_path = map2_lgl(exposure, outcome, \(e, o) has_directed_path(g, e, o)))
-
-    
-    
-    
-    df_of_tests |> 
-        mutate(
-            adjustment_sets = pmap(
-                list(exposure, outcome),
-                \(exp, out) g_get_adjustment_sets(g, exp, out)
-            ))
-}
-
-
+#####################################################
 # graph metric functions ------------
+#####################################################
 
-g_node_metrics <- function(g) {
+gcm_node_metrics <- function(g) {
+    if (class(g)[[1]] == "dagitty") g <- dagitty_to_tidygraph(g)
     pagerank_no_outcome <- 
         g %N>%
         filter(name != "Grade") |> 
@@ -175,7 +130,8 @@ g_node_metrics <- function(g) {
         mutate(pagerank_no_outcome = replace_na(pagerank_no_outcome, 0))
 }
 
-g_summary_metrics <- function(g){
+gcm_summary_metrics <- function(g){
+    if (class(g)[[1]] != "dagitty") g <- tidygraph_to_dagitty(g)
     pagerank_no_outcome <- 
         g %N>%
         filter(name != "Grade") |> 
@@ -222,14 +178,15 @@ g_summary_metrics <- function(g){
 }
 
 
-d_count_paths <- function(dag) {
+gcm_count_paths <- function(g) {
+    if (class(g)[[1]] != "dagitty") g <- tidygraph_to_dagitty(g)
     tibble(
-        total     = nrow(as_tibble(dagitty::paths(dag, limit = 1e4, 
+        total     = nrow(as_tibble(dagitty::paths(g, limit = 1e4, 
                                                   from = from, to = to))),
-        backdoor  = nrow(as_tibble(dagitty::paths(dagitty::backDoorGraph(dag), 
+        backdoor  = nrow(as_tibble(dagitty::paths(dagitty::backDoorGraph(g), 
                                                   from = from, to = to,
                                                   limit = 1e4))),
-        frontdoor = nrow(as_tibble(dagitty::paths(dag, directed = TRUE, 
+        frontdoor = nrow(as_tibble(dagitty::paths(g, directed = TRUE, 
                                                   from = from, to = to,
                                                   limit = 1e4)))
     )
@@ -248,7 +205,9 @@ switches_exist <- function(d, X, Y) {
 
 # Merging two graphs --------------
 
-g_merge <- function(g1, g2) {
+gcm_merge <- function(g1, g2) {
+    if (class(g1)[[1]] != "dagitty") g1 <- tidygraph_to_dagitty(g1)
+    if (class(g2)[[1]] != "dagitty") g2 <- tidygraph_to_dagitty(g2)
     nodes <- bind_rows(
         g1 %N>% as_tibble(),
         g2 %N>% as_tibble()
@@ -269,6 +228,422 @@ g_merge <- function(g1, g2) {
     
     tbl_graph(nodes = nodes, edges = edges)
 }
+
+
+
+# Causality helpers -------------------------
+
+has_directed_path <- function(g, from, to) {
+    if (class(g)[[1]] == "dagitty") g <- dagitty_to_tidygraph(g)
+    ig   <- as.igraph(g)
+    from_idx <- which(igraph::V(ig)$name == from)
+    to_idx   <- which(igraph::V(ig)$name == to)
+    igraph::distances(ig, v = from_idx, to = to_idx, mode = "out") |> 
+        is.finite() 
+}
+
+gcm_get_adjustment_sets_from_node_list <- function(g, node_list) {
+    # Returns as a data frame with exposure, outcome, list of 
+    # adjustment sets (list of lists)
+    if (class(g)[[1]] != "dagitty") g <- tidygraph_to_dagitty(g)
+    df_of_tests <-
+        cross_join(
+            tibble(exposure = node_list),
+            tibble(outcome = node_list)
+        ) |> 
+        filter(exposure != outcome) |> 
+        rowwise() |> 
+        mutate(has_path = map2_lgl(
+            exposure, 
+            outcome, \(e, o) has_directed_path(g, e, o)))
+    
+    
+    df_of_tests |> 
+        mutate(
+            adjustment_sets = pmap(
+                list(exposure, outcome),
+                \(exp, out) g_get_adjustment_sets(g, exp, out)
+            ))
+}
+
+
+# ===== Clustering DAGs ==========
+
+gcm_cluster_graph <- function(g, .f,
+                          quietly = FALSE # true to suppress messages
+) {
+    # Clusters a graph according to a function, .f, that remaps
+    # the old node names to new ones
+    # Would be good to add restrictions based on CDAG and PCDAG theory
+    # This would need a "proposed" new nodes list, and then a check
+    
+    # might be best as an 'exception' list, and then adjust .f accordingly
+    
+    # could also use 'partitioning' functions that generate a partition of
+    # the nodes according to some of the other algorithms
+    
+    # also, it might be good to track error metrics here. Options:
+    # 1. adjustment set error: so list of fine-grained adjustment sets, apply .f
+    # to the variables in those - are these the same as the adjustment sets in 
+    # the cluster DAG?
+    # 2. Same as above, but for conditional independence / d-separation
+    # 3. Same, but for sets of descendants and ancestors
+    # Q: Can these metrics be used for general DAG comparison?
+    
+    # Would also be nice to message / flag any cycles induced by the clustering
+    # or bi-directional edges induced
+    
+    if (class(g)[[1]] == "dagitty") g <- dagitty_to_tidygraph(g)
+    
+    new_nodes <- g %N>% 
+        as_tibble() |> 
+        mutate(name = .f(name)) |> 
+        group_by(name) |> 
+        summarise( # Any meta-data on nodes needs to be collapsed
+            across(where(is.numeric), \(x)sum(x)),
+            across(where(is.character), \(c) str_c(c, collapse = ";")),
+            across(where(is.factor), \(c) str_c(c, collapse = ";")),
+            .groups = "drop")
+    
+    new_edges <- g |> 
+        g_edgelist() |> 
+        mutate(across(from:to, .f)) |> 
+        count(from, to) |> 
+        filter(from != to) |> 
+        rename(edge_w = n)
+    
+    tbl_graph(nodes = new_nodes, edges = new_edges)
+}
+
+#' Cluster membership induced by .f on a graph's nodes
+gcm_cluster_memberships <- function(g, .f) {
+    nm <- g |> activate(nodes) |> pull(name)
+    split(nm, .f(nm))
+}
+
+# ---------------------------------------
+# Cluster metrics, L1, L2 consistency
+
+# -------------------------------------------------------------------
+# Gate 1: admissibility (acyclic quotient)
+# -------------------------------------------------------------------
+
+#' A coarsening is admissible as a C-DAG iff the quotient is acyclic.
+#' Returns the specific obstructions: 2-cycles (the common case; these
+#' are what would otherwise masquerade as bidirected edges) and any
+#' larger strongly connected components.
+cluster_check_admissible <- function(g, .f) {
+    nm <- g |> activate(nodes) |> pull(name)
+    el <- g_edgelist(g) |>
+        mutate(across(everything(), .f)) |>
+        filter(from != to) |>
+        distinct(from, to)
+    
+    two_cycles <- el |>
+        inner_join(el, by = c(from = "to", to = "from")) |>
+        filter(from < to) |>
+        transmute(a = from, b = to)
+    
+    q <- graph_from_data_frame(el, vertices = unique(.f(nm)))
+    acyclic <- is_dag(q)
+    og.acyclic <- is_dag(g)
+    
+    cyclic_clusters <- if (!acyclic) {
+        comp <- components(q, mode = "strong")
+        names(comp$membership)[
+            comp$membership %in% which(comp$csize > 1)
+        ]
+    } else character(0)
+    
+    og.cyclic_clusters <- if (!og.acyclic) {
+        og.comp <- components(g, mode = "strong")
+        names(og.comp$membership)[
+            og.comp$membership %in% which(og.comp$csize > 1)
+        ]
+    } else character(0)
+    
+    induced_cycles <- 
+        if (og.acyclic) {
+            cyclic_clusters
+        } else {
+            setdiff(
+                .f(og.cyclic_clusters), 
+                cyclic_clusters)
+        }
+    
+    admissible <- length(induced_cycles) == 0
+    
+    list(
+        admissible = admissible,
+        og.acyclic = og.acyclic,
+        acyclic      = acyclic,
+        og.cyclic_clusters = og.cyclic_clusters,
+        two_cycles      = two_cycles,
+        cyclic_clusters = cyclic_clusters
+    )
+}
+
+
+# -------------------------------------------------------------------
+# Gate 2 + L1 cost: cluster-level CI audit
+# -------------------------------------------------------------------
+# For every cluster pair (A, B) and conditioning set of clusters Z:
+#   coarse_indep : d-separation in the quotient
+#   fine_indep   : SET-level d-separation of members in the fine DAG
+#
+# Theory (Anand et al. 2023, soundness of C-DAG d-separation):
+#   admissible  =>  coarse_indep implies fine_indep,
+# so status == "VIOLATION" should be IMPOSSIBLE; treat any occurrence
+# as a bug (unit test). "lost" rows are the genuine information cost.
+
+cluster_L1_consistency_ci_audit <- function(g, .f, max_cond = Inf) {
+    if (class(g)[[1]] == "dagitty") g <- dagitty_to_tidy(g)
+    gd  <- tidy_graph_to_dag(g)
+    mem <- gcm_cluster_memberships(g, .f)
+    qd <- tidy_graph_to_dag(g_cluster_graph(g, .f))
+    cl  <- names(mem)
+    
+    rows <- list()
+    for (p in combn(cl, 2, simplify = FALSE)) {
+        rest <- setdiff(cl, p)
+        for (k in 0:min(max_cond, length(rest))) {
+            Zs <- if (k == 0) list(character(0))
+            else combn(rest, k, simplify = FALSE)
+            for (Z in Zs) {
+                coarse <- dseparated(qd, p[1], p[2], Z)
+                # above works, but error below
+                fine   <- dseparated(gd, 
+                                     as.character(mem[[p[1]]]),
+                                     as.character(mem[[p[2]]]),
+                                     as.character(unlist(mem[Z]))
+                )
+                rows[[length(rows) + 1]] <- tibble(
+                    A = p[1], B = p[2],
+                    Z = paste(sort(Z), collapse = ","),
+                    coarse_indep = coarse, fine_indep = fine)
+            }
+        }
+    }
+    bind_rows(rows) |>
+        mutate(status = case_when(
+            coarse_indep  & fine_indep  ~ "agree_indep",
+            !coarse_indep & !fine_indep ~ "agree_dep",
+            !coarse_indep & fine_indep  ~ "lost",      # information cost
+            coarse_indep  & !fine_indep ~ "VIOLATION"  # impossible if admissible
+        ))
+}
+
+cluster_L1_consistency_ci_loss <- function(audit) {
+    stopifnot(!any(audit$status == "VIOLATION"))   # unit test on theory
+    mean(audit$status == "lost")
+}
+
+# -------------------------------------------------------------------
+# Cost: ancestral inflation
+# -------------------------------------------------------------------
+# Fine ancestry always survives coarsening; the quotient can only ADD
+# ancestral relations (via concatenated between-cluster paths that have
+# no fine counterpart). One-directional by construction.
+# Should not function with cycles well. 
+
+cluster_L1_consistency_ancestral_inflation <- function(g, .f) {
+    gd  <- tidy_to_dagitty(g)
+    mem <- memberships(g, .f)
+    qd <- tidy_graph_to_dag(g_cluster_graph(g, .f))
+    cl  <- names(mem)
+    
+    expand_grid(an = cl, de = cl) |>
+        filter(an != de) |>
+        rowwise() |>
+        mutate(
+            coarse_anc = an %in% setdiff(ancestors(qd, de), de),
+            fine_anc   = length(intersect(
+                mem[[an]],
+                setdiff(unlist(map(mem[[de]], ~ ancestors(gd, .x))),
+                        mem[[de]]))) > 0
+        ) |>
+        ungroup() |>
+        mutate(spurious = coarse_anc & !fine_anc)
+}
+
+# wrapping all into one
+cluster_L1_consistency <- function(g, .f, mx = 3) {
+    if (class(g)[[1]] == "dagitty") g <- dagitty_to_tidygraph(g)
+    
+    admiss <- cluster_check_admissible(g, .f)
+    audit <- cluster_L1_consistency_ci_audit(g, .f, max_cond = mx)
+    ci_loss <- cluster_L1_consistency_ci_loss(audit)
+    anc_inflation <- cluster_L1_consistency_ancestral_inflation(g, .f)
+    
+    clustering_L1_consistency <- tibble(
+        ci_loss = ci_loss,
+        spurious_ancestors = mean(anc_inflation$spurious, na.rm = TRUE)
+    )
+    
+    return(list(
+        clustering_L1_consistency = clustering_L1_consistency,
+        audit = audit,
+        admissible_results = admiss,
+        ancestral_inflation_results = anc_inflation
+        
+    ))
+}
+
+# -------------------------------------------------------------------
+# L2 cost: identifiability / adjustment audit
+# -------------------------------------------------------------------
+# For each ordered cluster pair (X, Y):
+#   fine_id    : effect of do(members(X)) on members(Y) adjustment-
+#                identifiable in the fine graph
+#   coarse_id  : same at cluster level
+#   lost_id    : fine_id & !coarse_id  -- the coarsening destroyed
+#                identifiability (e.g. mediator merged with confounder).
+#                Transit-cluster theory (Tikka et al. 2023) characterizes
+#                the clusterings that never do this.
+#   recipe_sound : do the coarse minimal adjustment sets, expanded to
+#                their members, satisfy the adjustment criterion in the
+#                fine graph? (Sound by Anand et al.; kept as unit test.)
+
+cluster_L2_consistency_adjustment_audit <- function(g, .f, type = "canonical") {
+    gd  <- tidygraph_to_dagitty(g)
+    mem <- gcm_cluster_memberships(g, .f)
+    qd <- tidygraph_to_dagitty(g_cluster_graph(g, .f))
+    cl  <- names(mem)
+    
+    expand_grid(x = cl, y = cl) |>
+        filter(x != y) |>
+        pmap_dfr(function(x, y) {
+            coarse_sets <- tryCatch(
+                adjustmentSets(qd, exposure = x, outcome = y, type = type),
+                error = function(e) list())
+            fine_sets <- tryCatch(
+                adjustmentSets(gd, exposure = mem[[x]], outcome = mem[[y]],
+                               type = type),
+                error = function(e) list())
+            coarse_id <- length(coarse_sets) > 0
+            fine_id   <- length(fine_sets)   > 0
+            sound <- if (coarse_id) {
+                all(map_lgl(coarse_sets, function(Z)
+                    isAdjustmentSet(gd, unlist(mem[unlist(Z)]),
+                                    exposure = mem[[x]], outcome = mem[[y]])))
+            } else NA
+            tibble(x, y, fine_id, coarse_id,
+                   lost_id      = fine_id & !coarse_id,
+                   recipe_sound = sound)
+        })
+}
+
+cluster_L2_consistency <- function(g, .f) {
+    if (class(g)[[1]] == "dagitty") g <- dagitty_to_tidygraph(g)
+    audit <- cluster_L2_consistency_adjustment_audit(g, .f)
+    return(tibble(
+        ErrLostId = mean(audit$lost_id, na.rm = TRUE)
+    ))
+}
+
+
+# ======== Causal consistency measures ===========
+# These are for examining causal consistency between
+# any two graphs. 
+
+# Getting L1 level conditions
+
+gcm_implied_conditional_independencies <- function(g) {
+    if ("tbl_graph" %in% class(g)) g <- tidygraph_to_dagitty(g)
+    g |> 
+        dagitty::impliedConditionalIndependencies() |> 
+        map(\(x) tibble(X = x$X, Y = x$Y, Z = list(x$Z))) |> 
+        list_rbind() |> 
+        arrange(X, Y)
+}
+
+
+
+# adj_fingerprint 
+# getting the ZX, idX etc from function below
+
+gcm_fuzzy_L2_consistency <- function(gX, gY) {
+    # Takes in two tidygraph / dagitty objects
+    # Examines them for L2 causal consistency through checking if, for each pair,
+    # (x,y) where x is an ancestor of y, and (x.y) are in both graphs, 
+    # the adjustment sets for P(y|do(x)) meet the following criteria:
+    # - If P(y|do(x)) is identifiable in g1 then it is identifiable in g2
+    # - If P(y|do(x)) is identifiable in g2 then it is identifiable in g1
+    # - For the canonical adjustment set Z1 = z1, z2, ..., zn in g1 
+    #   and the canonical adjustment set Z2 = w1, w2, ..., wm then 
+    #   (a) Z1 not in Z2 are not in V(g2)
+    #   (b) Z2 not in Z1 are not in V(g1)
+    #   The count of the nodes invalidating (a) and (b) is ErrXY, ErrYX
+    if (!(class(gX)[[1]] == "dagitty")) gX <- tidygraph_to_dagitty(gX)
+    if (!(class(gY)[[1]] == "dagitty")) gY <- tidygraph_to_dagitty(gY)
+    
+    shared <- intersect(names(gX), names(gY))
+    
+    pairs <- expand_grid(x = shared, y = shared) |> 
+        filter(x != y)
+    
+    canAdjSet <- function(g, exposure, outcome) {
+        adjustmentSets(x = g, 
+                       exposure = exposure,
+                       outcome = outcome,
+                       type = "canonical") |> 
+            unlist() |> 
+            unname() |> 
+            as.character() |> 
+            sort()
+    }
+    
+    df.out <- 
+        pairs |> 
+        rowwise() |> 
+        mutate(
+            canonical_ZX = pmap(
+                list(x,y),
+                \(x,y)
+                canAdjSet(g1, x, y)
+            ),
+            canonical_ZY = pmap(
+                list(x,y),
+                \(x,y)
+                canAdjSet(g2, x, y)
+            )
+        ) |> 
+        mutate(
+            idX = length(canonical_ZX) > 0,
+            idY = length(canonical_ZX) > 0
+        ) |> 
+        mutate(
+            idXY = !(idY & !idX),
+            idYX = !(idX & !idY)
+        ) |> 
+        mutate(
+            # nodes in adjustment sets in both models
+            ZXshared = list(canonical_ZX[canonical_ZX %in% shared]),
+            ZYshared = list(canonical_ZY[canonical_ZY %in% shared])
+        ) |> 
+        mutate( # Err is count of nodes in shared 
+            ZXsharedMax = length(ZXshared),
+            ZYsharedMax = length(ZYshared),
+        ) |> 
+        mutate(
+            ErrXY = sum(!(ZXshared %in% ZYshared)),
+            ErrYX = sum(!(ZYshared %in% ZXshared))
+        ) |> 
+        select(x, y, idXY, idYX, ErrXY, ErrYX, everything())
+    
+    idXY <-  mean(df.out$idXY)
+    idYX <-  mean(df.out$idYX)
+    ErrXY <- sum(df.out$ErrXY) / sum(df.out$ZXsharedMax)
+    ErrYX <- sum(df.out$ErrYX) / sum(df.out$ZYsharedMax)
+    
+    return(list(
+        idXY = idXY, idYX = idYX,
+        ErrXY = ErrXY, ErrYX = ErrYX,
+        df = df.out, shared_nodes = shared
+    ))
+    
+}
+
 
 # Comparing two graphs ----------------
 
@@ -301,7 +676,7 @@ align_adjacency_matrices <- function(g1, g2, common = TRUE, nodes = NULL) {
     list(m1 = mat1, m2 = mat2, nodes = nodes)
 }
 
-g_latent_projection <- function(g, latent_nodes) {
+gcm_latent_projection <- function(g, latent_nodes) {
     
     ig <- as.igraph(g)
     all_nodes <- igraph::V(ig)$name
@@ -358,7 +733,7 @@ g_to_cpdag <- function(g) {
 }
 
 
-g_hamming_dist <- function(g1, g2, common = TRUE, nodes = NULL, normalise = FALSE, 
+gcm_hamming_dist <- function(g1, g2, common = TRUE, nodes = NULL, normalise = FALSE, 
                            all_mistakes_as_one = FALSE, use_cp_dag = TRUE) {
     if (use_cp_dag) {
         g1 <- g_to_cpdag(g1)
@@ -366,7 +741,7 @@ g_hamming_dist <- function(g1, g2, common = TRUE, nodes = NULL, normalise = FALS
     }
     M <- align_adjacency_matrices(g1, g2, common = common, nodes = nodes)
     hd <- SID::hammingDist(M$m1, M$m2, allMistakesOne = all_mistakes_as_one)
-
+    
     if (normalise) {
         n <- length(M$nodes)
         hd <- hd / (n * (n - 1))
@@ -375,8 +750,11 @@ g_hamming_dist <- function(g1, g2, common = TRUE, nodes = NULL, normalise = FALS
     return(hd)    
 }
 
-g_structural_intervention_dist <- function(g1, g2,
+gcm_L2_consistency_SID <- function(g1, g2,
                                            common = TRUE, nodes = NULL) {
+    if (!(class(gX)[[1]] == "dagitty")) gX <- tidygraph_to_dagitty(gX)
+    if (!(class(gY)[[1]] == "dagitty")) gY <- tidygraph_to_dagitty(gY)
+    
     M <- align_adjacency_matrices(g1, g2, common = common, nodes = nodes)
     sid_raw <- SID::structIntervDist(M$m1, M$m2)
     
@@ -389,52 +767,30 @@ g_structural_intervention_dist <- function(g1, g2,
     
     result
 }
-    
-    
 
-
-# Graph clustering / coarsening ---------------
-
-g_cluster_graph <- function(g, .f,
-                            quietly = FALSE # true to suppress messages
-                            ) {
-    # Clusters a graph according to a function, .f, that remaps
-    # the old node names to new ones
-    # Would be good to add restrictions based on CDAG and PCDAG theory
-    # This would need a "proposed" new nodes list, and then a check
-    
-    # might be best as an 'exception' list, and then adjust .f accordingly
-    
-    # could also use 'partitioning' functions that generate a partition of
-    # the nodes according to some of the other algorithms
-    
-    # also, it might be good to track error metrics here. Options:
-    # 1. adjustment set error: so list of fine-grained adjustment sets, apply .f
-    # to the variables in those - are these the same as the adjustment sets in 
-    # the cluster DAG?
-    # 2. Same as above, but for conditional independence / d-separation
-    # 3. Same, but for sets of descendants and ancestors
-    # Q: Can these metrics be used for general DAG comparison?
-    
-    # Would also be nice to message / flag any cycles induced by the clustering
-    # or bi-directional edges induced
-    
-    new_nodes <- g %N>% 
-        as_tibble() |> 
-        mutate(name = .f(name)) |> 
-        group_by(name) |> 
-        summarise( # Any meta-data on nodes needs to be collapsed
-            across(where(is.numeric), \(x)sum(x)),
-            across(where(is.character), \(c) str_c(c, collapse = ";")),
-            across(where(is.factor), \(c) str_c(c, collapse = ";")),
-            .groups = "drop")
-    
-    new_edges <- g |> 
-        g_edgelist() |> 
-        mutate(across(from:to, .f)) |> 
-        count(from, to) |> 
-        filter(from != to) |> 
-        rename(edge_w = n)
-    
-    tbl_graph(nodes = new_nodes, edges = new_edges)
+gcm_L2_consistency <- function(gX, gY) {
+    fuzzyL2 <- gcm_fuzzy_L2_consistency(gX, gY)
+    sidXYL2 <- gcm_L2_consistency_SID(gX, gY)
+    sidYXL2 <- gcm_L2_consistency_SID(gY, gX)
+    df.out <- 
+        tibble(
+        sidXY = sidXYL2$sid.normalised,
+        sidYX = sidYXL2$sid.normalised,
+        idXY = fuzzyL2$idXY,
+        idYX = fuzzyL2$idYX,
+        ErrXY = fuzzyL2$ErrXY,
+        ErrYX = fuzzyL2$ErrYX
+    )
+    return(list(
+        L2_consistincy = df.out,
+        fuzzy = fuzzyL2,
+        sidXY = sidXYL2,
+        sidYX = sidYXL2
+    ))
 }
+
+
+
+
+
+

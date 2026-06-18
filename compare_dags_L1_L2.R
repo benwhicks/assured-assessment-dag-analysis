@@ -35,16 +35,16 @@ library(tidyr)
 # -------------------------------------------------------------------
 
 #' tbl_graph (directed, with a `name` node attribute) -> dagitty DAG
-tidy_to_dagitty <- function(tg) {
+tidygraph_to_dagitty <- function(tg, node_var = "name") {
   stopifnot(inherits(tg, "tbl_graph"))
-  nm <- tg |> activate(nodes) |> pull(name)
+  nm <- as_tibble(activate(tg, nodes))[[node_var]]
   el <- tg |> activate(edges) |> as_tibble()
   lines <- c(nm, if (nrow(el) > 0) paste(nm[el$from], "->", nm[el$to]))
   dagitty(paste0("dag {\n", paste(lines, collapse = "\n"), "\n}"))
 }
 
 #' dagitty graph (DAG or MAG) -> tbl_graph, edge `type` preserved
-dagitty_to_tidy <- function(g) {
+dagitty_to_tidygraph <- function(g) {
   v <- names(g)
   e <- dagitty::edges(g)
   tbl_graph(
@@ -348,8 +348,8 @@ fuzzy_L2_consistency <- function(gX, gY) {
     #   (a) Z1 not in Z2 are not in V(g2)
     #   (b) Z2 not in Z1 are not in V(g1)
     #   The count of the nodes invalidating (a) and (b) is ErrXY, ErrYX
-    if (!class(gX) == "dagitty") gX <- tidy_graph_to_dag(gX)
-    if (!class(gY) == "dagitty") gY <- tidy_graph_to_dag(gY)
+    if (!(class(gX)[[1]] == "dagitty")) gX <- tidygraph_to_dagitty(gX)
+    if (!(class(gY)[[1]] == "dagitty")) gY <- tidygraph_to_dagitty(gY)
     
     shared <- intersect(names(gX), names(gY))
     
@@ -403,7 +403,7 @@ fuzzy_L2_consistency <- function(gX, gY) {
             ErrXY = sum(!(ZXshared %in% ZYshared)),
             ErrYX = sum(!(ZYshared %in% ZXshared))
         ) |> 
-        select(x, y, idXY, idYX, ErrXY, everything())
+        select(x, y, idXY, idYX, ErrXY, ErrYX, everything())
     
     idXY <-  mean(df.out$idXY)
     idYX <-  mean(df.out$idYX)
