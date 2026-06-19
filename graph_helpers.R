@@ -78,9 +78,9 @@ gcm_possible_edges <- function(g) {
     if (class(g)[[1]] == "dagitty") g <- dagitty_to_tidygraph(g)
     # m <- as.character(substitute(g)) |>  
     #     str_remove("^tdag_")
-    g_nodelist(g) |> 
+    gcm_nodelist(g) |> 
         rename(from = name) |> 
-        cross_join(g_nodelist(g) |> 
+        cross_join(gcm_nodelist(g) |> 
                        rename(to = name))
 }
 
@@ -131,7 +131,7 @@ gcm_node_metrics <- function(g) {
 }
 
 gcm_summary_metrics <- function(g){
-    if (class(g)[[1]] != "dagitty") g <- tidygraph_to_dagitty(g)
+    if (class(g)[[1]] == "dagitty") g <- dag_to_tg(g)
     pagerank_no_outcome <- 
         g %N>%
         filter(name != "Grade") |> 
@@ -179,15 +179,12 @@ gcm_summary_metrics <- function(g){
 
 
 gcm_count_paths <- function(g) {
-    if (class(g)[[1]] != "dagitty") g <- tidygraph_to_dagitty(g)
+    # if (class(g)[[1]] != "dagitty") g <- tidygraph_to_dagitty(g)
     tibble(
-        total     = nrow(as_tibble(dagitty::paths(g, limit = 1e4, 
-                                                  from = from, to = to))),
+        total     = nrow(as_tibble(dagitty::paths(g, limit = 1e4))),
         backdoor  = nrow(as_tibble(dagitty::paths(dagitty::backDoorGraph(g), 
-                                                  from = from, to = to,
                                                   limit = 1e4))),
         frontdoor = nrow(as_tibble(dagitty::paths(g, directed = TRUE, 
-                                                  from = from, to = to,
                                                   limit = 1e4)))
     )
 }
@@ -206,8 +203,8 @@ switches_exist <- function(d, X, Y) {
 # Merging two graphs --------------
 
 gcm_merge <- function(g1, g2) {
-    if (class(g1)[[1]] != "dagitty") g1 <- tidygraph_to_dagitty(g1)
-    if (class(g2)[[1]] != "dagitty") g2 <- tidygraph_to_dagitty(g2)
+    if (class(g1)[[1]] == "dagitty") g1 <- dagitty_to_tidygraph(g1)
+    if (class(g2)[[1]] == "dagitty") g2 <- dagitty_to_tidygraph(g2)
     nodes <- bind_rows(
         g1 %N>% as_tibble(),
         g2 %N>% as_tibble()
@@ -306,7 +303,7 @@ gcm_cluster_graph <- function(g, .f,
             .groups = "drop")
     
     new_edges <- g |> 
-        g_edgelist() |> 
+        gcm_edgelist() |> 
         mutate(across(from:to, .f)) |> 
         count(from, to) |> 
         filter(from != to) |> 
@@ -332,9 +329,9 @@ gcm_cluster_memberships <- function(g, .f) {
 #' Returns the specific obstructions: 2-cycles (the common case; these
 #' are what would otherwise masquerade as bidirected edges) and any
 #' larger strongly connected components.
-cluster_check_admissible <- function(g, .f) {
+gcm_cluster_check_admissible <- function(g, .f) {
     nm <- g |> activate(nodes) |> pull(name)
-    el <- g_edgelist(g) |>
+    el <- gcm_edgelist(g) |>
         mutate(across(everything(), .f)) |>
         filter(from != to) |>
         distinct(from, to)
@@ -396,11 +393,11 @@ cluster_check_admissible <- function(g, .f) {
 # so status == "VIOLATION" should be IMPOSSIBLE; treat any occurrence
 # as a bug (unit test). "lost" rows are the genuine information cost.
 
-cluster_L1_consistency_ci_audit <- function(g, .f, max_cond = Inf) {
+gcm_cluster_L1_consistency_ci_audit <- function(g, .f, max_cond = Inf) {
     if (class(g)[[1]] == "dagitty") g <- dagitty_to_tidy(g)
     gd  <- tidy_graph_to_dag(g)
     mem <- gcm_cluster_memberships(g, .f)
-    qd <- tidy_graph_to_dag(g_cluster_graph(g, .f))
+    qd <- tidy_graph_to_dag(gcm_cluster_graph(g, .f))
     cl  <- names(mem)
     
     rows <- list()
@@ -433,7 +430,7 @@ cluster_L1_consistency_ci_audit <- function(g, .f, max_cond = Inf) {
         ))
 }
 
-cluster_L1_consistency_ci_loss <- function(audit) {
+gcm_cluster_L1_consistency_ci_loss <- function(audit) {
     stopifnot(!any(audit$status == "VIOLATION"))   # unit test on theory
     mean(audit$status == "lost")
 }
@@ -446,10 +443,10 @@ cluster_L1_consistency_ci_loss <- function(audit) {
 # no fine counterpart). One-directional by construction.
 # Should not function with cycles well. 
 
-cluster_L1_consistency_ancestral_inflation <- function(g, .f) {
-    gd  <- tidy_to_dagitty(g)
-    mem <- memberships(g, .f)
-    qd <- tidy_graph_to_dag(g_cluster_graph(g, .f))
+gcm_cluster_L1_consistency_ancestral_inflation <- function(g, .f) {
+    gd  <- tidygraph_to_dagitty(g)
+    mem <- gcm_cluster_memberships(g, .f)
+    qd <- tidy_graph_to_dag(gcm_cluster_graph(g, .f))
     cl  <- names(mem)
     
     expand_grid(an = cl, de = cl) |>
@@ -467,13 +464,13 @@ cluster_L1_consistency_ancestral_inflation <- function(g, .f) {
 }
 
 # wrapping all into one
-cluster_L1_consistency <- function(g, .f, mx = 3) {
+gcm_cluster_L1_consistency <- function(g, .f, mx = 3) {
     if (class(g)[[1]] == "dagitty") g <- dagitty_to_tidygraph(g)
     
-    admiss <- cluster_check_admissible(g, .f)
-    audit <- cluster_L1_consistency_ci_audit(g, .f, max_cond = mx)
-    ci_loss <- cluster_L1_consistency_ci_loss(audit)
-    anc_inflation <- cluster_L1_consistency_ancestral_inflation(g, .f)
+    admiss <- gcm_cluster_check_admissible(g, .f)
+    audit <- gcm_cluster_L1_consistency_ci_audit(g, .f, max_cond = mx)
+    ci_loss <- gcm_cluster_L1_consistency_ci_loss(audit)
+    anc_inflation <- gcm_cluster_L1_consistency_ancestral_inflation(g, .f)
     
     clustering_L1_consistency <- tibble(
         ci_loss = ci_loss,
@@ -504,10 +501,10 @@ cluster_L1_consistency <- function(g, .f, mx = 3) {
 #                their members, satisfy the adjustment criterion in the
 #                fine graph? (Sound by Anand et al.; kept as unit test.)
 
-cluster_L2_consistency_adjustment_audit <- function(g, .f, type = "canonical") {
+gcm_cluster_L2_consistency_adjustment_audit <- function(g, .f, type = "canonical") {
     gd  <- tidygraph_to_dagitty(g)
     mem <- gcm_cluster_memberships(g, .f)
-    qd <- tidygraph_to_dagitty(g_cluster_graph(g, .f))
+    qd <- tidygraph_to_dagitty(gcm_cluster_graph(g, .f))
     cl  <- names(mem)
     
     expand_grid(x = cl, y = cl) |>
@@ -533,11 +530,11 @@ cluster_L2_consistency_adjustment_audit <- function(g, .f, type = "canonical") {
         })
 }
 
-cluster_L2_consistency <- function(g, .f) {
+gcm_cluster_L2_consistency <- function(g, .f) {
     if (class(g)[[1]] == "dagitty") g <- dagitty_to_tidygraph(g)
-    audit <- cluster_L2_consistency_adjustment_audit(g, .f)
+    audit <- gcm_cluster_L2_consistency_adjustment_audit(g, .f)
     return(tibble(
-        ErrLostId = mean(audit$lost_id, na.rm = TRUE)
+        ErrLostId = sum(audit$lost_id, na.rm = TRUE) / sum(audit$fine_id)
     ))
 }
 
@@ -555,6 +552,81 @@ gcm_implied_conditional_independencies <- function(g) {
         map(\(x) tibble(X = x$X, Y = x$Y, Z = list(x$Z))) |> 
         list_rbind() |> 
         arrange(X, Y)
+}
+
+gcm_fuzzy_L1_consistency <- function(gX, gY) {
+    # if X _||_ Y | Z and Z in g1 subset of 
+    
+    shared <- intersect(gcm_nodelist(gX), gcm_nodelist(gY)) |> 
+        pull(name)
+    
+    imp_ci_gX <- gcm_implied_conditional_independencies(gX) |> 
+        mutate(ZXinY = map(Z, \(x) x[x %in% shared])) |> 
+        rowwise() |> 
+        mutate(
+            ZXlen = length(Z),
+            ZXinYlen = length(ZXinY)) |> 
+        rename(ZX = Z) |> 
+        ungroup() |> 
+        summarise(
+            indX = any(ZXlen == 0),
+            ZXinY = list(ZXinY[ZXinYlen > 0]),
+            .by = c(X, Y)
+        )
+    
+    imp_ci_gY <- gcm_implied_conditional_independencies(gY) |> 
+        mutate(ZYinX = map(Z, \(x) x[x %in% shared])) |> 
+        rowwise() |> 
+        mutate(
+            ZYlen = length(Z),
+            ZYinXlen = length(ZYinX)) |> 
+        rename(ZY = Z) |> 
+        ungroup() |> 
+        summarise(
+            indY = any(ZYlen == 0),
+            ZYinX = list(ZYinX[ZYinXlen > 0]),
+            .by = c(X, Y)
+        )
+    
+    imp_ci <- inner_join(
+        imp_ci_gX,
+        imp_ci_gY,
+        by = c("X", "Y")
+    ) |>
+        mutate(
+            .a = map(ZXinY, ~ unique(map(.x, sort))),
+            .b = map(ZYinX, ~ unique(map(.x, sort))),
+            Zint   = map2(
+                .a, .b, 
+                ~ .x[map_lgl(.x, \(s) any(map_lgl(.y, \(t) identical(s, t))))]),
+            Zuni   = map2(.a, .b, ~ unique(c(.x, .y))),
+            n_int  = map_int(Zint, length),
+            n_uni  = map_int(Zuni, length),
+            jaccard = n_int / n_uni
+        ) |> 
+        select(-.a, -.b) 
+        
+    if (nrow(imp_ci) == 0) {
+        message("No shared independence relationships")
+        return(
+            list(
+                L1soft = 0,
+                L1hard = 0,
+                ci_compasisons = imp_ci
+            )
+        )
+    }
+    
+    # mean jaccard for hard L1, mean jaccard > 0 for soft
+    L1_soft <- mean(imp_ci$jaccard > 0, na.rm = T)
+    L1_hard <- mean(imp_ci$jaccard, na.rm = T)
+    
+    return(
+        list(
+        L1soft = L1_soft,
+        L1hard = L1_hard,
+        ci_comparisions = imp_ci)
+    )
 }
 
 
@@ -600,12 +672,12 @@ gcm_fuzzy_L2_consistency <- function(gX, gY) {
             canonical_ZX = pmap(
                 list(x,y),
                 \(x,y)
-                canAdjSet(g1, x, y)
+                canAdjSet(gX, x, y)
             ),
             canonical_ZY = pmap(
                 list(x,y),
                 \(x,y)
-                canAdjSet(g2, x, y)
+                canAdjSet(gY, x, y)
             )
         ) |> 
         mutate(

@@ -463,10 +463,17 @@ all_descendants <-
 all_possible_edges_with_metrics <- 
     all_possible_edges |> 
     filter(from != to) |> 
-    left_join(all_edges |> mutate(in_graph = TRUE)) |> 
+    left_join(
+        all_edges |> 
+            mutate(in_graph = TRUE),
+        by = c("Model", "from", "to")) |> 
     mutate(in_graph = replace_na(in_graph, FALSE)) |> 
-    left_join(all_descendants |> mutate(descendant_in_graph = TRUE)) |> 
-    mutate(descendant_in_graph = replace_na(descendant_in_graph, FALSE))
+    left_join(
+        all_descendants |> 
+            mutate(descendant_in_graph = TRUE),
+        by = c("Model", "from", "to")) |> 
+    mutate(descendant_in_graph = replace_na(
+        descendant_in_graph, FALSE))
 
 all_edges_sum <- 
     all_possible_edges_with_metrics |>
@@ -518,9 +525,8 @@ merged_nodes <-
     mutate(measurable = code_node_measurability(name)) |> 
     left_join(name_node_nice_name, by = "name")
 
-# cognitive, metacognitive, emotion / motivation, collaboration
 merged_all_graph <- tbl_graph(nodes = merged_nodes, edges = merged_edges)
-# View(merged_nodes |> arrange(name))
+
 ```
 
 ## Coarsen graphs
@@ -628,66 +634,224 @@ gcm_metrics <-
 
 ## Preservation of L1, L2
 
+THIS BIT NEEDS TO BE RE-WRITTEN FOR THE NEW CODE
+
 L1 (association) and L2 (intervention / do) levels on the causal hierarchy can be examined at a graph level through:
 
 - $\mathcal{L}_1$ Examining all conditional probability implications. If these are preserved between graphs then the two graphs are $\mathcal{L}_1$-consistent. ? An equivalent may be having similar / same CPDAGs - complete partial DAGs - which are the Markov equivalent class of DAGs. These induce the same conditional independencies (Thm 1.2.4 in Pearl 2009). These are the skeleton + all v-structures (colliders) arrowed in.
 - $\mathcal{L}_2$ Examining all 'do' operator implications. If these are preserved between graphs then the two graphs are $\mathcal{L}_2$-consistent. Or - use the Structural Intervention Distance (Peters & Buhlmann, 2015)
 - $\mathcal{L}_3$ Is not explored - this would probably require a SCM, not just the DAG.
 
-``` {r}
-threshold_for_joint_inclusion <- 3
+### Causal Consistency when Clustering
 
-ng_presence_in_models <- 
-    all_nodes_with_metrics |> 
-    group_by(node_group) |> 
-    summarise(N = n_distinct(Model)) |> 
-    arrange(desc(N))
+#### L1 consistency when clustering
 
-ng_to_include <- ng_presence_in_models |> 
-    filter(N >= threshold_for_joint_inclusion) |> 
-    pull(node_group)
-ng_to_exclude <- ng_presence_in_models |> 
-    filter(N < threshold_for_joint_inclusion) |> 
-    pull(node_group)
+This computes two metrics, the loss ratio of conditional independence relationships (ci_loss) and the rate of introduction of spurious ancestors when coarsening. CI loss indicates how often a conditional independence relationship in the fine graph did not have its analogue in the coarsened graph. Spurious ancestors indicates the rate at which merged nodes introduced new ancestors in the cluster DAG - violating L1 consistency (CITE - Annan???)
 
-proj_tcdags <- 
+``` {r L1-consistency-of-clustering}
+clustering_L1_consistency <- 
+    tdags |> 
     imap(
-        tcdags_node_group,
-        \(g, n)
-        g_latent_projection(g, ng_to_exclude)
-    ) 
-
-merged_cluster_graph_ng_no_post_nodes <- 
-    merged_all_graph |> 
-    filter(!str_detect(name, "Post")) |> 
-    gcm_cluster_graph(code_node_group) 
-
-proj_merged_cluster_graph_ng_no_post_nodes <- 
-    merged_cluster_graph_ng_no_post_nodes |> 
-    g_latent_projection(ng_to_exclude)
-
-# building function to generate L1, L2, algebraic statements
-
-nds <- tdag_m1 %N>% pull(name)
-pairs <- tidyr::expand_grid(from = nds, to = nds) |> 
-        filter(from != to)
-
-# Getting conditional independencies
-# This is a list structure - so better as that. X, Y and Z (Z is the set of vars)
-L1_statements <- 
-    ddags |> 
-    imap(\(d,m) d_implied_conditional_independencies(d)) |> 
+        \(g, m)
+        gcm_cluster_L1_consistency(
+            g, code_node_group)$clustering_L1_consistency
+    ) |> 
     list_rbind(names_to = "Model")
-
-# Getting adjustments sets
-pairs |> 
-    rowwise() |> 
-    mutate(
-        adj_g = list(dagitty::adjustmentSets(dag_m1, exposure = from, outcome = to)),
-        n_sets_g   = length(adj_g),
-        identifiable = n_sets_g > 0
-    )
 ```
+
+``` {r}
+clustering_L1_consistency |> 
+    knitr::kable(
+        caption = "L1-consistency metrics when coarsening GCMs",
+        digits = 4)
+```
+
+#### L2 consistency when clustering
+
+This computes a single error metric - the % of lost identifiable pairs when coarsening. So this is where the $P(Y|do(X))$ is identifiable in the fine graph but $P(\varphi(Y)|do(\varphi(X)))$ is not identifiable in the coarsened cluster graph. 
+
+``` {r L2-consistency-of-clustering}
+clustering_L2_consistency <- 
+    tdags |> 
+    imap(
+        \(g,m)
+        gcm_cluster_L2_consistency(g, code_node_group)) |> 
+    list_rbind(names_to = "Model")
+```
+
+``` {r}
+clustering_L2_consistency |> 
+    knitr::kable(
+        caption = "L2-consistency metrics when coarsening GCMs",
+        digits = 4)
+```
+
+### Causal consistency between models
+
+``` {r dist-matrix-helper-funcion}
+
+compute_dist_matrix <- function(
+        model_list, # list of models
+        .df, # function that computes distance between two models
+        symmetric = FALSE) {
+    n  <- length(model_list)
+    nm <- names(model_list) 
+    D <- matrix(0, n, n, dimnames = list(nm, nm))
+    
+    if (symmetric) {
+        # fill upper triangle, mirror, zero diagonal
+        for (i in seq_len(n - 1)) {
+            for (j in (i + 1):n) {
+                d <- .df(model_list[[i]], model_list[[j]])
+                D[i, j] <- d
+                D[j, i] <- d
+            }
+        }
+        Dsym <- D
+    } else {
+        for (i in seq_len(n)) {
+            for (j in seq_len(n)) {
+                if (i != j) {
+                    D[i, j] <- .df(
+                        model_list[[i]], 
+                        model_list[[j]])
+                }
+            }
+        }
+        D_sym <- (D + t(D)) / 2
+    }
+    return(list(D = D, Dsym = Dsym))
+}
+
+```
+
+``` {r between-distances-plotting}
+library(ggdendro)
+
+plotting_Ln_between_distances <- function(D, D_sym = NULL,
+                                      Level = "L1") {
+    if (is.null(D_sym)) {
+        D_sym <- (D + t(D)) / 2
+    }
+    nm <- D |> colnames()
+    # --- cluster on the symmetric matrix ---
+    hc  <- hclust(as.dist(D_sym), method = "average")
+    ord <- hc$order
+    lev <- nm[ord]  
+
+    # --- dendrogram panel (rotated to sit above the heatmap) ---
+    dend <- dendro_data(hc)
+    
+    p_dend <- ggplot() +
+        geom_segment(
+            data = segment(dend),
+            aes(x = x, y = y, xend = xend, yend = yend),
+            linewidth = 0.4, colour = "grey30"
+        ) +
+        scale_x_continuous(
+            breaks = seq_along(lev),
+            labels = lev,
+            limits = c(0.5, length(lev) + 0.5),
+            expand = expansion(add = 0),
+            name = "Model"
+        ) +
+        theme_minimal() +
+        coord_flip() +
+        theme(
+            axis.title       = element_blank(),
+            axis.text.x      = element_blank(),
+            axis.ticks       = element_blank(),
+            panel.grid       = element_blank()
+        ) 
+    
+    D_long <- as_tibble(D_sym, rownames = "from") |>
+        pivot_longer(-from, names_to = "to", values_to = "dist") |>
+        mutate(
+            from = factor(from, levels = lev),
+            to   = factor(to,   levels = lev)
+        )
+    
+    p_heat <- ggplot(D_long, aes(to, from, fill = dist)) +
+        geom_tile(colour = "white", linewidth = 0.5) +
+        geom_text(
+            aes(label = round(dist, 2)), 
+            size = 3, colour = "grey15") +
+        scale_fill_viridis_c(
+            name = str_c(Level, "-consistency\ndiscrepency"), 
+            direction = -1) +
+        scale_x_discrete(position = "top") +
+        labs(x = NULL, y = NULL) +
+        coord_fixed() +
+        theme_minimal(base_size = 12) +
+        theme(
+            # axis.text.x = element_text(angle = 45, hjust = 0),
+            panel.grid  = element_blank(),
+            legend.position = "left"
+        )
+    
+    # combined 
+    combined <- p_heat + p_dend
+
+    return(list(
+        p_heat = p_heat,
+        p_denro = p_dend,
+        p_combined = combined
+    ))
+
+}
+```
+
+#### L1 consistency between models
+
+``` {r}
+# scalar L1 distance between two models
+L1_dist <- function(m_i, m_j, mode = "soft") {
+  fuzzyL1 <- gcm_fuzzy_L1_consistency(
+      gX = m_i, gY = m_j)
+  if (mode == "soft") {
+      return(1 - fuzzyL1$L1soft)
+  } else {
+      return(1 - fuzzyL1$L1hard)
+  }
+}
+
+L1_between_model_metrics <- 
+    compute_dist_matrix(tcdags_node_group, L1_dist, symmetric = TRUE)
+
+plots_L1_similarities <- plotting_Ln_between_distances(
+    L1_between_model_metrics$D, Level = "L1")
+
+```
+
+``` {r}
+plots_L1_similarities$p_combined
+```
+
+#### L2 consistency between models
+
+``` {r}
+# L2 distance between two models
+L2_dist <- function(m_i, m_j) {
+  fuzzyL2 <- gcm_fuzzy_L2_consistency(
+      gX = m_i, gY = m_j)
+  return(fuzzyL2$ErrXY)
+}
+
+L2_between_model_metrics <- 
+    compute_dist_matrix(tcdags_node_group, L2_dist, symmetric = TRUE)
+
+```
+
+``` {r}
+plots_L2_similarities <- plotting_Ln_between_distances(
+    L2_between_model_metrics$D, 
+    L2_between_model_metrics$Dsym,
+    Level = "L2"
+)
+
+plots_L2_similarities$p_combined
+```
+
 
 # Visualisations
 
@@ -827,9 +991,6 @@ ggsave("figures/FIG--time-modelling-and-representation.jpg",
        width = 10, height = 5, 
        dpi = 300)
 
-ggsave("figures/FIG--time-modelling-and-representation.svg", 
-       plot = p_time_and_representation_1,
-       width = 25, height = 10, units = "cm")
 ```
 
 
@@ -849,21 +1010,37 @@ gcm_metrics |>
 
 ### Edge coherence
 
+- *n* the total number of distinct edges.
+- *n_anc_desc* the total number of ancestor - descendant pairs across all graphs. 
+- *edge_alignment* is the proportion of edges that were always in the same direction. 
+- *descendant_alignment* is the proportion of ancestor - descendant relationships that were always in the same direction.
 
 ``` {r}
 
+direct_edge_co_inclusion <- 
+    weighted.mean(all_edges_in_models_with_metrics$p_direct,
+              all_edges_in_models_with_metrics$N)
+
+causal_path_inclusion <- 
+    weighted.mean(all_edges_in_models_with_metrics$p_descendant,
+              all_edges_in_models_with_metrics$N)
+
 tb_edge_coherence <- 
-    merged_edges |> 
+    all_edges_sum |> count(p_descendant)
+    all_possible_edges_with_metrics |> count(descendant_alignment)
     summarise(
-        n = sum(n),
-        n_desc = sum(n_descendant),
-        max_n = sum(max_n),
-        aligned = mean(direct_alignment),
-        descendant_alignment = mean(descendant_alignment)
-    ) |> 
-    mutate(edges_included = n / max_n,
-           desc_included = n_desc / max_n)
-tb_edge_coherence
+        n_edges = sum(in_graph, na.rm = TRUE),
+        n_anc_desc = sum(descendant_in_graph, na.rm = TRUE),
+        edge_alignment = mean(
+            edge_alignment == "aligned", 
+            na.rm = TRUE),
+        descendant_alignment = mean(
+            descendant_alignment == "descendant:aligned", 
+            na.rm = TRUE),
+        included_in_a_causal_path = mean()
+    ) 
+tb_edge_coherence |> 
+    knitr::kable("Causal relationship coherence over all models")
 ```
 
 Generally when two nodes in the model were selected by different participants the same edge was drawn in `r round(100*tb_edge_coherence$edges_included , 2)`% of the time. A handful of potential edges (`r round(100*(1-tb_edge_coherence$aligned),2)`%) were included, but asigned a different direction of causal flow. 
