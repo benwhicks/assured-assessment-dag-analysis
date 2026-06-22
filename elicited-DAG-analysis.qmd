@@ -1,8 +1,13 @@
 ---
 title: "Eliciting causal models -- Analysis"
-format: 
-    pdf:
-        fig-format: png
+execute:
+  dev: svglite
+format:
+    html:
+        code-fold: true
+        warning: false
+        message: false
+        fig-format: svg
 ---
 
 # TODO
@@ -15,6 +20,13 @@ format:
 ## Check renamed nodes
 
 - fiddling with these could have broken some nice names and measurability coding
+
+
+## Write functions to help node coding with causal abstraction theory
+
+- Given a graph, suggest L1-L2 permissible abstractions (to some degree)
+- Given a coarsening, check for L1-L2 validity
+- Would be good to have some workflow documented
 
 ``` {r}
 #| include: false
@@ -43,9 +55,11 @@ library(dagitty)
 library(tidygraph)
 library(scales)
 library(patchwork)
-library(ggsci)
-library(ggokabeito)
+library(ggsci) # drop??
+library(ggokabeito) # drop??
 library(ggdist)
+library(ggraph)
+
 # library(ggpubfigs)
 #library(cowplot)
 ```
@@ -56,11 +70,11 @@ source("graph_helpers.R")
 
 # Notation
 
-We will use $\mathcal{CURVEY}$ uppercase script for sets across all the models, $\mathbf{BOLD}$ uppercase for sets, and $UPPER$ case standard for instances in the models. Lowercase like $v$ will be reserved for imagining actual values (so a node taking on a particular value).  
+We will use curvy uppercase ($\mathcal{M,G,V,E}$) script for sets across all the models, $\mathbf{BOLD}$ uppercase for sets, and $UPPER$ case standard for instances in the models. Lowercase like $v$ will be reserved for imagining actual values (so a node taking on a particular value).  
 
-The models are indexed as $\mathcal{G}=\{G_1,G_2,\dots,G_8 \}$, and each model $G_k$ comprises of a set of vertices $\mathbf{V}_{G_k}$ and edges $\mathbf{E}_{G_k}$, so $G_k=(\mathbf{V}_{G_k}, \mathbf{E}_{G_k})$, with the set of all nodes being $\mathcal{V}$ edges being $\mathcal{E}$. $E_{ij}=V_i \rightarrow V_j$ indicates an edge between two nodes. If two nodes are connected through a mediated path, such as $V_i \rightarrow \dots \rightarrow V_j$ then we write $\mathrm{De}_{ij}=V_i \rightsquigarrow V_j$ or $V_i \in \mathrm{an}(V_j)$. To specify model context for ancestors, descendants and mediated parts we subscript the model: $V_i \in \mathrm{an}_{G_k}(V_j)$ or $V_i \rightsquigarrow _{G_k} V_j$. Nodes $V_i$ are indexed over all models (so across $\mathcal{V}$), but if we want to talk about $V_i$ as it stands in $G_k$ we would use $V_{i:G_k}$, and likewise for an edge $E_{i:G_k}$ residing in the context of model $G_k$.
+The models are indexed as $\mathcal{M}=\{M_1,M_2,\dots,M_8 \}$ with their corresponding graphical form as $\mathcal{G}=\{G_1,G_2,\dots,G_8 \}$, and each graphical model $G_k$ comprises of a set of vertices $\mathbf{V}_{G_k}$ and edges $\mathbf{E}_{G_k}$, so $G_k=(\mathbf{V}_{G_k}, \mathbf{E}_{G_k})$, with the set of all nodes being $\mathcal{V}$ edges being $\mathcal{E}$. $E_{ij}=V_i \rightarrow V_j$ indicates an edge between two nodes. If two nodes are connected through a mediated path, such as $V_i \rightarrow \dots \rightarrow V_j$ then we write $\mathrm{De}_{ij}=V_i \rightsquigarrow V_j$ or $V_i \in \mathrm{an}(V_j)$. To specify model context for ancestors, descendants and mediated parts we subscript the model: $V_i \in \mathrm{an}_{G_k}(V_j)$ or $V_i \rightsquigarrow _{G_k} V_j$. Nodes $V_i$ are indexed over all models (so across $\mathcal{V}$), but if we want to talk about $V_i$ as it stands in $G_k$ we would use $V_{i:G_k}$, and likewise for an edge $E_{ij:G_k}$ residing in the context of model $G_k$.
 
-We will also be applying coarsening functions to create cluster DAGs. A typical coarsening functions $\varphi$ is applied to the graph, and within it all the nodes and edges. So $\varphi (G_{k})=\varphi G_{k}=(\mathbf{V}_{\varphi G_k},\mathbf{E}_{\varphi G_k})$, which will also refer to as a new cluster model $G^C_{k}=\varphi G_k$ for slightly cleaner notation, and including the $C$ for cluster. The coarsening function $\varphi$ induces an equivalence relation $\sim _\varphi$ on $\mathbf{V}_G_k$ where $V_i \sim_\varphi V_j$ iff $\varphi (V_i) = \varphi (V_j)$, i.e. both nodes map to the same cluster.  In this cluster model we would find $\mathbf{V}_{\varphi G_k}$. The coarsened / cluster nodes would be $[V_{i}]_{\varphi}=\{V_j \in \mathcal{V}:V_j \sim_{\varphi} V_i\}$, the equivalence class of nodes $[V_i]_{\varphi}$, or simply $[V_i]$ if $\varphi$ is clear from the context. These clusters can be relabled and reindexed to $C_a = [V_i]_{\varphi}$ for legibility.
+We will also be applying coarsening functions to create cluster DAGs. A typical coarsening functions $\varphi$ is applied to the graph, and within it all the nodes and edges. So $\varphi (G_{k})=\varphi G_{k}=(\mathbf{V}_{\varphi G_k},\mathbf{E}_{\varphi G_k})$, which will also refer to as a new cluster model $G^C_{k}=\varphi G_k$ for slightly cleaner notation, and including the $C$ for cluster. The coarsening function $\varphi$ induces an equivalence relation $\sim _\varphi$ on $\mathbf{V}_{G_k}$ where $V_i \sim_\varphi V_j$ iff $\varphi (V_i) = \varphi (V_j)$, i.e. both nodes map to the same cluster.  In this cluster model we would find $\mathbf{V}_{\varphi G_k}$. The coarsened / cluster nodes would be $[V_{i}]_{\varphi}=\{V_j \in \mathcal{V}:V_j \sim_{\varphi} V_i\}$, the equivalence class of nodes $[V_i]_{\varphi}$, or simply $[V_i]$ if $\varphi$ is clear from the context. These clusters can be relabled and reindexed to $C_a = [V_i]_{\varphi}$ for legibility.
 The edges in $\varphi G_{k}=G_{k}^{C}$ are then $E^{\varphi}_{[i][j]}=[V_i]\rightarrow [V_j]=C_a \rightarrow C_b=E^{C}_{ab}$. Choosing to use the $C$ or $\varphi$ syntax depends on the context - are we mainly discussing the cluster model $G_k^C$ or the processes of coarsening $\varphi G_{k}$?
 
 
@@ -513,7 +527,6 @@ all_edges_in_models_with_metrics <-
 
 
 ``` {r making-merged-fine-graph}
-library(ggraph)
 
 merged_edges <- 
     all_edges_in_models_with_metrics
@@ -1041,8 +1054,6 @@ We examine the `r n_edges` edges from `r n_possible_edges` possible edges across
 - $P(E_{ij} \in M_k|i,j\in V(M_k), E_{ij} \in \mathcal{E})$ - the probability of universal inclusion of an edge in all models it could be included in, given it appears in at least one model. This is `r prob_universal_inclusion_given_existence`
 - $P(De_{ij} \in M_k|i,j\in V(M_k), E_{ij} \in \mathcal{E})$ - the probability of universal inclusion of a descendant in all models it could be included in, given the edge appears in at least one model. This is `r prob_universal_descendant_inclusion_given_existence`. Could maybe use the squiggle notation here of mediated path?
 
-Generally when two nodes in the model were selected by different participants the same edge was drawn in `r round(100*tb_edge_coherence$edges_included , 2)`% of the time. A handful of potential edges (`r round(100*(1-tb_edge_coherence$aligned),2)`%) were included, but asigned a different direction of causal flow. 
-In `r round(100*tb_edge_coherence$desc_included , 2)`% of the cases where a path $A \rightarrow B$ was included in a model, then there existed a path from $A$ to $B$ in every other model that included those two nodes, just sometimes through a mediator(s) variable. 
 
 ### Merging graphs
 
@@ -1355,7 +1366,9 @@ coarse_plot_from_layout <- function(lyt) {
             arrow = arrow(length = unit(2, 'mm')),
             start_cap = circle(3, 'mm'),
             end_cap = circle(3, 'mm')) +
-        geom_node_point(aes(colour = node_type, size = node_w)) +
+        geom_node_point(aes(colour = node_type
+                            # , size = node_w
+                            )) +
         scale_color_okabe_ito(order = c(9, 7,1, 2,3, 6, 8,5, 4), drop = FALSE) +
         # ggsci::scale_color_npg(drop = FALSE) +
         # geom_node_text(aes(label = name, size = node_w, alpha = node_w), nudge_y = -.5) +
@@ -2732,6 +2745,10 @@ est_to_plot <-
 pal_cols <- palette.colors()
 pal_cols <- c(pal_cols[1], "#777777", pal_cols[2], pal_cols[3])
 
+
+
+# Would be nice to replicate this, but group 
+# models into those identifiable and those not
 est_to_plot |> 
     filter(DAG != "Observable") |> 
     mutate(DAG = if_else(DAG == "Potentially Observable", "Learned DAG", 
@@ -2771,6 +2788,59 @@ est_to_plot |>
     theme_minimal()
 ```
 
+``` {r}
+est_to_plot_grouped <- est_to_plot |> 
+    filter(DAG %in% c("Potentially Observable", "Ground Truth", "Expert DAG")) |> 
+    mutate(DAG = if_else(DAG == "Potentially Observable", "Learned DAG", 
+                         DAG) |> 
+               factor(levels = c(
+                   "Ground Truth",
+                   "Expert DAG",
+                   "Learned DAG"
+               ))) |> 
+    group_by(Model) |> 
+    mutate(model_group = if_else(
+        is.nan(estimate_mean[DAG == "Expert DAG"]),
+        "Non-identifiable", 
+        "Identifiable"
+        )) |> 
+    ungroup() |> 
+    group_by(model_group) |> 
+    mutate(model_group_list = str_c(unique(model_group), " models\n(from observable data):\n",
+        str_c(unique(sort(Model)) , collapse = ", "))) |> 
+    ungroup() |> 
+    mutate(
+        y_pos = as.numeric(factor(model_group_list)) + 
+            (as.numeric(factor(ogDAG)) - mean(as.numeric(factor(ogDAG)))) * dodge_amt
+    )
+
+est_to_plot_grouped |> 
+    ggplot(aes(color = DAG, y = y_pos)) + 
+    # geom_pointinterval(
+    #     aes(x = gt_est_diff, 
+    #         xmin = gt_est_diff - 2 * error, 
+    #         xmax = gt_est_diff + 2 * error),
+    #        alpha = 0.3, size = 1
+    # ) +
+    geom_pointinterval(
+        aes(x = gt_est_diff,
+            xmin = gt_est_diff - 1 *error,
+            xmax = gt_est_diff + 1 *error),
+           alpha = 0.6, size = 5
+    ) +
+    scale_y_continuous(
+        breaks = seq_along(levels(factor(est_to_plot_grouped$model_group_list))),
+        labels = levels(factor(est_to_plot_grouped$model_group_list)),
+        name = "Model estimates by identifiability"
+    ) +
+    annotate("label", x = -0.0, y = c(2), label = "?",
+             color = pal_cols[3], alpha = 0.4) +
+    scale_colour_discrete(palette = palette.colors()) +
+    xlab("Deviation from ground truth estimate") +
+    theme_minimal() +
+    theme(legend.position = "bottom")
+```
+
 
 
 ``` {r}
@@ -2798,42 +2868,102 @@ plot_bnlearn_coarse_comparison <- function(s_estimates) {
         mutate(name = str_remove(name, "_p$")) |>
         gcm_cluster_graph(code_node_group) |> 
         g_plot_coarse()
-    p_dwo <- s_estimates$fitted_BN$bn.dwo |>
+    p_opo <- s_estimates$fitted_BN$bn.opo |>
         bn_to_dagitty() |> 
         dag_to_tidy_graph() %N>%
         mutate(name = str_remove(name, "_p$")) |> 
         gcm_cluster_graph(code_node_group) |> 
         g_plot_coarse()
-    p_dwoop <- s_estimates$fitted_BN$bn.dwoop |> 
-        bn_to_dagitty() |> 
-        dag_to_tidy_graph() %N>%
-        mutate(name = str_remove(name, "_p$")) |> 
-        gcm_cluster_graph(code_node_group) |> 
-        g_plot_coarse()
-    return(p_orig  / p_dwo )
+    return(p_orig  / p_opo )
     
 }
 
-plot_bnlearn_coarse_comparison(s_estimates = simulations_ng_cluster_models$M1$estimates) + 
-    ggtitle("Model1: Actual coarsened DAG (top) vs coarsened learned DAG from observable nodes")
-plot_bnlearn_coarse_comparison(s_estimates = s2_estimates)+ 
+plot_bnlearn_coarse_comparison(s_estimates = simulations_ng_cluster_models$M1) + 
+    ggtitle("Model 1: Actual coarsened DAG (top) vs coarsened learned DAG from observable nodes")
+plot_bnlearn_coarse_comparison(s_estimates = simulations_ng_cluster_models$M2) + 
     ggtitle("Model 2: Actual coarsened DAG (top) vs coarsened learned DAG from observable nodes")
-plot_bnlearn_coarse_comparison(s_estimates = s4_estimates)+ 
+plot_bnlearn_coarse_comparison(s_estimates = simulations_ng_cluster_models$M3) + 
+    ggtitle("Model 3: Actual coarsened DAG (top) vs coarsened learned DAG from observable nodes")
+plot_bnlearn_coarse_comparison(s_estimates = simulations_ng_cluster_models$M4) + 
     ggtitle("Model 4: Actual coarsened DAG (top) vs coarsened learned DAG from observable nodes")
-plot_bnlearn_coarse_comparison(s_estimates = s5_estimates)+ 
-     ggtitle("Model 5: Actual coarsened DAG (top) vs coarsened learned DAG from observable nodes")
-plot_bnlearn_coarse_comparison(s_estimates = s6_estimates)+ 
+plot_bnlearn_coarse_comparison(s_estimates = simulations_ng_cluster_models$M5) + 
+    ggtitle("Model 5: Actual coarsened DAG (top) vs coarsened learned DAG from observable nodes")
+plot_bnlearn_coarse_comparison(s_estimates = simulations_ng_cluster_models$M6) + 
     ggtitle("Model 6: Actual coarsened DAG (top) vs coarsened learned DAG from observable nodes")
- plot_bnlearn_coarse_comparison(s_estimates = s8_estimates)+ 
-     ggtitle("Model 8: Actual coarsened DAG (top) vs coarsened learned DAG from observable nodes")
+plot_bnlearn_coarse_comparison(s_estimates = simulations_ng_cluster_models$M7) + 
+    ggtitle("Model 7: Actual coarsened DAG (top) vs coarsened learned DAG from observable nodes")
+plot_bnlearn_coarse_comparison(s_estimates = simulations_ng_cluster_models$M8) + 
+    ggtitle("Model 8: Actual coarsened DAG (top) vs coarsened learned DAG from observable nodes")
 
 
 
-plot_bnlearn_comparisons(s_estimates = s1_estimates)
-plot_bnlearn_comparisons(s_estimates = s2_estimates)
-plot_bnlearn_comparisons(s_estimates = s4_estimates)
-plot_bnlearn_comparisons(s_estimates = s5_estimates)
-plot_bnlearn_comparisons(s_estimates = s6_estimates)
-plot_bnlearn_comparisons(s_estimates = s8_estimates)
+```
 
+## Distances between the simulations and the originals
+
+``` {r}
+lcdags <- 
+    simulations_ng_cluster_models |> 
+    set_names(nm = str_replace(names(simulations_ng_cluster_models), "M", "D")) |> 
+    imap(
+        \(est,m)
+        est$fitted_BN$bn.opo |> 
+            bn_to_dagitty() |> 
+            dagitty_to_tidygraph()
+    )
+
+all.cluster.dags <- 
+    c(tcdags_node_group, lcdags)
+
+L1_between_model_and_simulation_metrics <- 
+    compute_dist_matrix(all.cluster.dags, L1_dist, symmetric = TRUE)
+
+# Filling in errors with max distance
+L1_between_model_and_simulation_metrics$D[is.nan(L1_between_model_and_simulation_metrics$D)] <- 1
+
+plots_L1_similarities_full <- plotting_Ln_between_distances(
+    L1_between_model_and_simulation_metrics$D, Level = "L1")
+
+```
+
+### L1 consistency between models
+
+Includes the models, $M_k$ and their corresponding DAG learned from data, $D_k$
+
+``` {r}
+plots_L1_similarities_full$p_combined
+```
+
+### L2 consistency between models
+
+``` {r}
+# L2 distance between two models
+
+
+L2_between_model_metrics_full <- 
+    compute_dist_matrix(all.cluster.dags, L2_dist, symmetric = TRUE)
+L2_between_model_metrics_full$D[is.nan(L2_between_model_metrics_full$D)] <- 1
+L2_between_model_metrics_full$Dsym[is.nan(L2_between_model_metrics_full$Dsym)] <- 1
+```
+
+``` {r}
+plots_L2_similarities_full <- plotting_Ln_between_distances(
+    L2_between_model_metrics_full$D, 
+    L2_between_model_metrics_full$Dsym,
+    Level = "L2"
+)
+
+plots_L2_similarities_full$p_combined
+```
+
+### Averaged L1, L2 similarity between all models
+
+``` {r}
+plots_L12_mean_consistency_all <- 
+    plotting_Ln_between_distances(
+        (L1_between_model_and_simulation_metrics$D + L2_between_model_metrics_full$Dsym) / 2,
+        Level = "L1-2"
+    )
+
+plots_L12_mean_consistency_all$p_combined
 ```
