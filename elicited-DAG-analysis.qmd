@@ -7,19 +7,10 @@ format:
 
 # TODO
 
-## Go through node classification for causal consistency
-
-Is it possible to do the node coding into groups whilst preserving causal consistency according to Annand et al? This means that work with the cluster DAGs loses no L1 or L2 causal consistency.
-
-Need to assess: what kind of causal consistency am I preserving? To what extent? For the cyclic graphs the work breaks down - is there a softer consistency to be able to implement here to adjust this to?
-
-This seems to be done - need to run checks. Have been using `ancestral_inflation` (L1?) and `cluster_adjustment_audit` (L2?) but a ci fingerprint one might be good if needed. 
-
-## Implement fuzzy L1 comparisons
-
-## Implement fuzzy L2 comparisons
 
 ## Metrics between models, and between simulations
+
+
 
 ## Check renamed nodes
 
@@ -62,6 +53,17 @@ library(ggdist)
 ``` {r helper-function}
 source("graph_helpers.R")
 ```
+
+# Notation
+
+We will use $\mathcal{CURVEY}$ uppercase script for sets across all the models, $\mathbf{BOLD}$ uppercase for sets, and $UPPER$ case standard for instances in the models. Lowercase like $v$ will be reserved for imagining actual values (so a node taking on a particular value).  
+
+The models are indexed as $\mathcal{G}=\{G_1,G_2,\dots,G_8 \}$, and each model $G_k$ comprises of a set of vertices $\mathbf{V}_{G_k}$ and edges $\mathbf{E}_{G_k}$, so $G_k=(\mathbf{V}_{G_k}, \mathbf{E}_{G_k})$, with the set of all nodes being $\mathcal{V}$ edges being $\mathcal{E}$. $E_{ij}=V_i \rightarrow V_j$ indicates an edge between two nodes. If two nodes are connected through a mediated path, such as $V_i \rightarrow \dots \rightarrow V_j$ then we write $\mathrm{De}_{ij}=V_i \rightsquigarrow V_j$ or $V_i \in \mathrm{an}(V_j)$. To specify model context for ancestors, descendants and mediated parts we subscript the model: $V_i \in \mathrm{an}_{G_k}(V_j)$ or $V_i \rightsquigarrow _{G_k} V_j$. Nodes $V_i$ are indexed over all models (so across $\mathcal{V}$), but if we want to talk about $V_i$ as it stands in $G_k$ we would use $V_{i:G_k}$, and likewise for an edge $E_{i:G_k}$ residing in the context of model $G_k$.
+
+We will also be applying coarsening functions to create cluster DAGs. A typical coarsening functions $\varphi$ is applied to the graph, and within it all the nodes and edges. So $\varphi (G_{k})=\varphi G_{k}=(\mathbf{V}_{\varphi G_k},\mathbf{E}_{\varphi G_k})$, which will also refer to as a new cluster model $G^C_{k}=\varphi G_k$ for slightly cleaner notation, and including the $C$ for cluster. The coarsening function $\varphi$ induces an equivalence relation $\sim _\varphi$ on $\mathbf{V}_G_k$ where $V_i \sim_\varphi V_j$ iff $\varphi (V_i) = \varphi (V_j)$, i.e. both nodes map to the same cluster.  In this cluster model we would find $\mathbf{V}_{\varphi G_k}$. The coarsened / cluster nodes would be $[V_{i}]_{\varphi}=\{V_j \in \mathcal{V}:V_j \sim_{\varphi} V_i\}$, the equivalence class of nodes $[V_i]_{\varphi}$, or simply $[V_i]$ if $\varphi$ is clear from the context. These clusters can be relabled and reindexed to $C_a = [V_i]_{\varphi}$ for legibility.
+The edges in $\varphi G_{k}=G_{k}^{C}$ are then $E^{\varphi}_{[i][j]}=[V_i]\rightarrow [V_j]=C_a \rightarrow C_b=E^{C}_{ab}$. Choosing to use the $C$ or $\varphi$ syntax depends on the context - are we mainly discussing the cluster model $G_k^C$ or the processes of coarsening $\varphi G_{k}$?
+
+
 
 # Data import
 
@@ -642,9 +644,9 @@ L1 (association) and L2 (intervention / do) levels on the causal hierarchy can b
 - $\mathcal{L}_2$ Examining all 'do' operator implications. If these are preserved between graphs then the two graphs are $\mathcal{L}_2$-consistent. Or - use the Structural Intervention Distance (Peters & Buhlmann, 2015)
 - $\mathcal{L}_3$ Is not explored - this would probably require a SCM, not just the DAG.
 
-### Causal Consistency when Clustering
+## Causal Consistency when Clustering
 
-#### L1 consistency when clustering
+### L1 consistency when clustering
 
 This computes two metrics, the loss ratio of conditional independence relationships (ci_loss) and the rate of introduction of spurious ancestors when coarsening. CI loss indicates how often a conditional independence relationship in the fine graph did not have its analogue in the coarsened graph. Spurious ancestors indicates the rate at which merged nodes introduced new ancestors in the cluster DAG - violating L1 consistency (CITE - Annan???)
 
@@ -666,7 +668,7 @@ clustering_L1_consistency |>
         digits = 4)
 ```
 
-#### L2 consistency when clustering
+### L2 consistency when clustering
 
 This computes a single error metric - the % of lost identifiable pairs when coarsening. So this is where the $P(Y|do(X))$ is identifiable in the fine graph but $P(\varphi(Y)|do(\varphi(X)))$ is not identifiable in the coarsened cluster graph. 
 
@@ -686,7 +688,7 @@ clustering_L2_consistency |>
         digits = 4)
 ```
 
-### Causal consistency between models
+## Causal consistency between models
 
 ``` {r dist-matrix-helper-funcion}
 
@@ -801,7 +803,7 @@ plotting_Ln_between_distances <- function(D, D_sym = NULL,
 }
 ```
 
-#### L1 consistency between models
+### L1 consistency between models
 
 ``` {r}
 # scalar L1 distance between two models
@@ -827,7 +829,7 @@ plots_L1_similarities <- plotting_Ln_between_distances(
 plots_L1_similarities$p_combined
 ```
 
-#### L2 consistency between models
+### L2 consistency between models
 
 ``` {r}
 # L2 distance between two models
@@ -1010,38 +1012,34 @@ gcm_metrics |>
 
 ### Edge coherence
 
-- *n* the total number of distinct edges.
-- *n_anc_desc* the total number of ancestor - descendant pairs across all graphs. 
-- *edge_alignment* is the proportion of edges that were always in the same direction. 
-- *descendant_alignment* is the proportion of ancestor - descendant relationships that were always in the same direction.
+How often do causal paths point in the same direction? To examine this across all models we must look at relationships between 
 
 ``` {r}
+n_possible_edges <- nrow(all_possible_edges)
+n_edges <- nrow(all_edges_in_models_with_metrics)
 
-direct_edge_co_inclusion <- 
-    weighted.mean(all_edges_in_models_with_metrics$p_direct,
-              all_edges_in_models_with_metrics$N)
+prob_universal_inclusion_given_existence <- 
+    mean(all_edges_in_models_with_metrics$p_direct == 1)
 
-causal_path_inclusion <- 
-    weighted.mean(all_edges_in_models_with_metrics$p_descendant,
-              all_edges_in_models_with_metrics$N)
+prob_universal_descendant_inclusion_given_existence <- 
+    mean(all_edges_in_models_with_metrics$p_descendant == 1)
 
-tb_edge_coherence <- 
-    all_edges_sum |> count(p_descendant)
-    all_possible_edges_with_metrics |> count(descendant_alignment)
-    summarise(
-        n_edges = sum(in_graph, na.rm = TRUE),
-        n_anc_desc = sum(descendant_in_graph, na.rm = TRUE),
-        edge_alignment = mean(
-            edge_alignment == "aligned", 
-            na.rm = TRUE),
-        descendant_alignment = mean(
-            descendant_alignment == "descendant:aligned", 
-            na.rm = TRUE),
-        included_in_a_causal_path = mean()
-    ) 
-tb_edge_coherence |> 
-    knitr::kable("Causal relationship coherence over all models")
+prob_universal_descendant_inclusion_given_descendant_existance <- 
+    all_edges_sum |> 
+    filter(p_descendant > 0) |> 
+    mutate(universal_descendant = p_descendant == 1) |> 
+    pull(universal_descendant) |> 
+    mean()
+    
 ```
+
+We examine the `r n_edges` edges from `r n_possible_edges` possible edges across the 8 models, and in addition include the ancestor - descendant pairs. From this we define a few events:
+
+- $E_{ij}\in M$ for and edge belonging to a model
+- $E_{ij} \in \mathcal{M}$
+
+- $P(E_{ij} \in M_k|i,j\in V(M_k), E_{ij} \in \mathcal{E})$ - the probability of universal inclusion of an edge in all models it could be included in, given it appears in at least one model. This is `r prob_universal_inclusion_given_existence`
+- $P(De_{ij} \in M_k|i,j\in V(M_k), E_{ij} \in \mathcal{E})$ - the probability of universal inclusion of a descendant in all models it could be included in, given the edge appears in at least one model. This is `r prob_universal_descendant_inclusion_given_existence`. Could maybe use the squiggle notation here of mediated path?
 
 Generally when two nodes in the model were selected by different participants the same edge was drawn in `r round(100*tb_edge_coherence$edges_included , 2)`% of the time. A handful of potential edges (`r round(100*(1-tb_edge_coherence$aligned),2)`%) were included, but asigned a different direction of causal flow. 
 In `r round(100*tb_edge_coherence$desc_included , 2)`% of the cases where a path $A \rightarrow B$ was included in a model, then there existed a path from $A$ to $B$ in every other model that included those two nodes, just sometimes through a mediator(s) variable. 
@@ -1171,14 +1169,14 @@ leg_tall_plot <- cowplot::ggdraw(leg_tall)
 
 
 ``` {r}
-p1 <- g_plot_fine(tdag_m1, weight_nodes = FALSE)
-p2 <- g_plot_fine(tdag_m2, weight_nodes = FALSE)
-p3 <- g_plot_fine(tdag_m3, weight_nodes = FALSE)
-p4 <- g_plot_fine(tdag_m4, weight_nodes = FALSE)
-p5 <- g_plot_fine(tdag_m5, weight_nodes = FALSE)
-p6 <- g_plot_fine(tdag_m6, weight_nodes = FALSE)
-p7 <- g_plot_fine(tdag_m7, weight_nodes = FALSE)
-p8 <- g_plot_fine(tdag_m8, weight_nodes = FALSE)
+p1 <- g_plot_fine(tdags$M1, weight_nodes = FALSE)
+p2 <- g_plot_fine(tdags$M2, weight_nodes = FALSE)
+p3 <- g_plot_fine(tdags$M3, weight_nodes = FALSE)
+p4 <- g_plot_fine(tdags$M4, weight_nodes = FALSE)
+p5 <- g_plot_fine(tdags$M5, weight_nodes = FALSE)
+p6 <- g_plot_fine(tdags$M6, weight_nodes = FALSE)
+p7 <- g_plot_fine(tdags$M7, weight_nodes = FALSE)
+p8 <- g_plot_fine(tdags$M8, weight_nodes = FALSE)
 
 # Plot border 
     # theme(
@@ -1309,6 +1307,79 @@ ggsave("figures/FIG--dags_fine_all_and_merged_labelled.jpg", pFineTogetherLabell
 print("a, d, g are models M2, M3, M4; b, e are M8 and M1; c, f, h are M7, M5, M6. Closest models are therefore d and g (D-measure 0.105) and the furthest are e and 7 (D-measure 0.324)")
 ```
 
+
+``` {r plotting-coarse-graph}
+merged_coarse_layout <- 
+    merged_all_graph |> 
+    gcm_cluster_graph(code_node_group) |> 
+    activate(nodes) |> 
+    mutate(node_type = code_node_type(name)) |> 
+    create_layout(layout = "sugiyama") |> 
+    mutate(
+        x = case_when(
+            name == "CD.Att" ~ 18.5,
+            name == "T.Aff.WrkLd" ~ x - 5,
+            name == "H.AI.good" ~ 27,
+            TRUE ~ x),
+        y = case_when(
+            name == "CD.Att" ~ y + 1,
+            name == "Grade" ~ y - 2.5,
+            name == "CD.Str" ~ 3,
+            name == "S.EM" ~ 5,
+            TRUE ~ y)
+           )
+
+p_temp <- merged_coarse_layout |> 
+     ggraph() +
+        geom_edge_fan(aes(alpha = edge_w), strength = 0.2,
+            arrow = arrow(length = unit(2, 'mm')),
+            start_cap = circle(3, 'mm'),
+            end_cap = circle(3, 'mm')) +
+        geom_node_point(aes(colour = node_type, size = node_w)) +
+    scale_color_okabe_ito(order = c(9, 7,1, 2,3, 6, 8,5, 4)) +
+        # scale_color_npg(drop = FALSE) +
+        # geom_node_text(aes(label = name, size = node_w, alpha = node_w), nudge_y = -.5) +
+        theme_graph() +
+        scale_edge_alpha_continuous(range = c(0.15,0.8)) +
+        scale_alpha_continuous(range = c(0.2,0.6)) +
+        theme(legend.position = "none") 
+
+bc <- ggplot_build(p_temp)
+x_limits_course <- bc$layout$panel_params[[1]]$x.range
+y_limits_course <- bc$layout$panel_params[[1]]$y.range
+
+coarse_plot_from_layout <- function(lyt) {
+    lyt |> 
+        ggraph() +
+        geom_edge_fan(aes(alpha = edge_w), strength = 0.2,
+            arrow = arrow(length = unit(2, 'mm')),
+            start_cap = circle(3, 'mm'),
+            end_cap = circle(3, 'mm')) +
+        geom_node_point(aes(colour = node_type, size = node_w)) +
+        scale_color_okabe_ito(order = c(9, 7,1, 2,3, 6, 8,5, 4), drop = FALSE) +
+        # ggsci::scale_color_npg(drop = FALSE) +
+        # geom_node_text(aes(label = name, size = node_w, alpha = node_w), nudge_y = -.5) +
+        theme_graph() +
+        scale_edge_alpha_continuous(range = c(0.15,0.8)) +
+        scale_alpha_continuous(range = c(0.2,0.6)) +
+        theme(legend.position = "none") +
+        xlim(x_limits_course) +
+        ylim(y_limits_course)
+}
+
+g_plot_coarse <- function(g, lyt = merged_coarse_layout) {
+    create_layout(g, layout = "sugiyama") |> 
+        left_join(lyt |> select(x,y,name, node_type,node_w), by = "name",
+                  suffix = c(".default", "")) |> 
+    coarse_plot_from_layout()    
+}
+
+pCoarseMerged <- merged_coarse_layout |> 
+    coarse_plot_from_layout()
+# ggsave("dag_merged_course.svg", pCoarseMerged, , width = 6, height = 6)
+```
+
+
 #### Common patterns - fine
 
 Most common three-node patterns. 
@@ -1370,7 +1441,7 @@ plot_highlighted_fine_graph <- function(model = 1, LEGEND_POSITION = "none") {
             aes(label = nice_name, 
                 color = node_type,
                 size = node_w),
-            alpha = 0.95,
+            alpha = 0.7,
             data = g_highlight |> 
                 filter(node_highlight == 2),
             repel = T, max.overlaps = 30,
@@ -1397,9 +1468,17 @@ plot_highlighted_fine_graph(4)
 #     xlim(x_limits_fine) +
 #     ylim(y_limits_fine)
 
+merged_cluster_graph_ng_no_post_nodes <- 
+    merged_all_graph |> 
+    activate(nodes) |> 
+    filter(!str_detect(name, "Post")) |> 
+    gcm_cluster_graph(code_node_group) |> 
+    activate(nodes) |> 
+    mutate(node_type = code_node_type(name))
 
 
-plot_highlighted_coarse_graph <- function(model = 1, LEGEND_POSITION = "none") {
+plot_highlighted_coarse_graph <- function(model = 1, LEGEND_POSITION = "none",
+                                          repel_labels = FALSE) {
     merged_coarse_models <- 
         merged_cluster_graph_ng_no_post_nodes
     
@@ -1457,10 +1536,10 @@ plot_highlighted_coarse_graph <- function(model = 1, LEGEND_POSITION = "none") {
             aes(label = nice_name, 
                 color = node_type,
                 size = node_w),
-            alpha = 0.95,
+            alpha = 0.7,
             data = g_highlight |> 
                 filter(node_highlight == 2),
-            repel = T, max.overlaps = 30,
+            repel = repel_labels, max.overlaps = 30,
             show.legend = FALSE) +
         geom_node_point(aes(colour = node_type,
                             size = node_w,
@@ -1541,6 +1620,12 @@ p_coarse_show_and_save(8)
 
 ### Visualising coarsened graphs
 
+
+Note the appearance of feedback loops - these are between S.Cp and S.Kn, but also S.Cp and H.AI.evil. These metacognitive skills are clearly seen as important feedback processes in this system.
+
+``` {r}
+pCoarseMerged + geom_node_text(aes(label = name, size = node_w, alpha = node_w), nudge_x = 1)
+```
 
 ``` {r}
 plots_coarsend_ng <- 
@@ -2649,6 +2734,14 @@ pal_cols <- c(pal_cols[1], "#777777", pal_cols[2], pal_cols[3])
 
 est_to_plot |> 
     filter(DAG != "Observable") |> 
+    mutate(DAG = if_else(DAG == "Potentially Observable", "Learned DAG", 
+                         DAG) |> 
+               factor(levels = c(
+                   "Ground Truth",
+                   "Ground Truth (est)",
+                   "Expert DAG",
+                   "Learned DAG"
+               ))) |> 
     mutate(
         y_pos = as.numeric(factor(Model)) + 
             (as.numeric(factor(ogDAG)) - mean(as.numeric(factor(ogDAG)))) * dodge_amt
@@ -2671,38 +2764,13 @@ est_to_plot |>
         labels = levels(factor(est_to_plot$Model)),
         name = "Model"
     ) +
-    annotate("label", x = -0.0, y = c(2,3,5,6,8), label = "?",
+    annotate("label", x = -0.0, y = c(2.2,3.2,5.2,6.2,8.2), label = "?",
              color = pal_cols[3], alpha = 0.4) +
     scale_colour_discrete(palette = pal_cols) +
     xlab("Deviation from ground truth estimate") +
     theme_minimal()
 ```
 
-``` {r eval=FALSE}
-all_estimates |>
-    filter(DAG != "Potentially Observable") |> 
-    mutate(
-        y_pos = 
-            as.numeric(factor(Model)) + 
-            (as.numeric(factor(DAG)) - mean(as.numeric(factor(DAG)))) * dodge_amt
-    ) |> 
-    ggplot(aes(color = DAG, y = y_pos)) + 
-    geom_pointinterval(
-        aes(x = estimate_mean, 
-            xmin = estimate_mean - 1 *error, 
-            xmax = estimate_mean + 1 *error),
-           alpha = 0.8, size = 3
-    ) +
-    ggokabeito::scale_color_okabe_ito() +
-    scale_y_continuous(
-        breaks = seq_along(levels(factor(all_ng_estimates$Model))),
-        labels = levels(factor(all_ng_estimates$Model)),
-        name = "Model"
-    ) +
-    xlab("Estimated effect") +
-    theme_minimal()
-
-```
 
 
 ``` {r}
@@ -2746,7 +2814,7 @@ plot_bnlearn_coarse_comparison <- function(s_estimates) {
     
 }
 
-plot_bnlearn_coarse_comparison(s_estimates = s1_estimates) + 
+plot_bnlearn_coarse_comparison(s_estimates = simulations_ng_cluster_models$M1$estimates) + 
     ggtitle("Model1: Actual coarsened DAG (top) vs coarsened learned DAG from observable nodes")
 plot_bnlearn_coarse_comparison(s_estimates = s2_estimates)+ 
     ggtitle("Model 2: Actual coarsened DAG (top) vs coarsened learned DAG from observable nodes")
