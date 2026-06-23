@@ -88,6 +88,14 @@ The edges in $\varphi G_{k}=G_{k}^{C}$ are then $E^{\varphi}_{[i][j]}=[V_i]\righ
 source("load-GCMs.R")
 ```
 
+``` {r}
+# Some colours
+# \definecolor{myochre}{RGB}{204,119,34}
+# \definecolor{mygum}{RGB}{87,180,66}
+myochre <- rgb(204, 119, 34, maxColorValue = 255)
+mygum <- rgb(87, 180, 66, maxColorValue = 255)
+```
+
 ## Graphical Causal Models
 
 Modelling sessions were originally run on Loopy, then transcribed into DAGitty (online) to generate the following `dot` language syntax for importing into `R`. A better way of doing this is under development. 
@@ -705,10 +713,15 @@ clustering_L2_consistency |>
 
 ``` {r dist-matrix-helper-funcion}
 
+library(softImpute)
+fit <- softImpute(D_with_NA, rank.max = 4, lambda = 0)
+D_filled <- complete(D_with_NA, fit)
+
 compute_dist_matrix <- function(
         model_list, # list of models
         .df, # function that computes distance between two models
-        symmetric = FALSE) {
+        symmetric = FALSE,
+        impute_undefined = TRUE) {
     n  <- length(model_list)
     nm <- names(model_list) 
     D <- matrix(0, n, n, dimnames = list(nm, nm))
@@ -733,8 +746,23 @@ compute_dist_matrix <- function(
                 }
             }
         }
-        D_sym <- (D + t(D)) / 2
+        Dsym <- (D + t(D)) / 2
     }
+    
+    if (impute_undefined) {
+        # First fill Dsym on mirror
+        fill <- is.nan(Dsym) & !is.nan(t(Dsym)) 
+        Dsym[fill] <- t(Dsym)[fill]
+        if (any(is.nan(D))) {
+            message("Imputing missing values")
+            fit <- softImpute(D, rank.max = 4, lambda = 0)
+        D <- complete(D, fit)
+        }
+        if (any(is.nan()))
+        fitSym <- softImpute(Dsym, rank.max = 4, lambda = 0)
+        Dsym <- complete(Dsym, fit)
+    } 
+    
     return(list(D = D, Dsym = Dsym))
 }
 
@@ -743,11 +771,21 @@ compute_dist_matrix <- function(
 ``` {r between-distances-plotting}
 library(ggdendro)
 
-plotting_Ln_between_distances <- function(D, D_sym = NULL,
+fmt_lab <- function(x) {
+    # split leading letters from trailing digits: "M1" -> "M", "1"
+    highlight_col = rgb(87, 180, 66, maxColorValue = 255) # mygum
+    letter <- sub("([A-Za-z]+).*", "\\1", x)
+    num    <- sub("[A-Za-z]+", "", x)
+    ifelse(
+        startsWith(x, "D"),
+        sprintf("<span style='background-color:%s'>%s<sub>%s</sub></span>", highlight_col, letter, num),
+        sprintf("%s<sub>%s</sub>", letter, num)   # non-M: subscript only, no highlight
+    )
+}
+
+plotting_Ln_between_distances <- function(D, 
                                       Level = "L1") {
-    if (is.null(D_sym)) {
-        D_sym <- (D + t(D)) / 2
-    }
+    D_sym <- (D + t(D)) / 2
     nm <- D |> colnames()
     # --- cluster on the symmetric matrix ---
     hc  <- hclust(as.dist(D_sym), method = "average")
@@ -770,6 +808,7 @@ plotting_Ln_between_distances <- function(D, D_sym = NULL,
             expand = expansion(add = 0),
             name = "Model"
         ) +
+        scale_y_discrete(labels = fmt_lab) +
         theme_minimal() +
         coord_flip() +
         theme(
@@ -794,7 +833,7 @@ plotting_Ln_between_distances <- function(D, D_sym = NULL,
         scale_fill_viridis_c(
             name = str_c(Level, "-consistency\ndiscrepency"), 
             direction = -1) +
-        scale_x_discrete(position = "top") +
+        scale_x_discrete(position = "top", labels = fmt_lab) +
         labs(x = NULL, y = NULL) +
         coord_fixed() +
         theme_minimal(base_size = 12) +
@@ -853,7 +892,8 @@ L2_dist <- function(m_i, m_j) {
 }
 
 L2_between_model_metrics <- 
-    compute_dist_matrix(tcdags_node_group, L2_dist, symmetric = TRUE)
+    compute_dist_matrix(
+        tcdags_node_group, L2_dist, symmetric = FALSE)
 
 ```
 
@@ -2915,11 +2955,12 @@ lcdags <-
 all.cluster.dags <- 
     c(tcdags_node_group, lcdags)
 
+# Error here - only using 8 models on D - something wrong in algorithm
 L1_between_model_and_simulation_metrics <- 
     compute_dist_matrix(all.cluster.dags, L1_dist, symmetric = TRUE)
 
 # Filling in errors with max distance
-L1_between_model_and_simulation_metrics$D[is.nan(L1_between_model_and_simulation_metrics$D)] <- 1
+# L1_between_model_and_simulation_metrics$D[is.nan(L1_between_model_and_simulation_metrics$D)] <- 1
 
 plots_L1_similarities_full <- plotting_Ln_between_distances(
     L1_between_model_and_simulation_metrics$D, Level = "L1")
@@ -2940,8 +2981,8 @@ plots_L1_similarities_full$p_combined
 # L2 distance between two models
 
 
-L2_between_model_metrics_full <- 
-    compute_dist_matrix(all.cluster.dags, L2_dist, symmetric = TRUE)
+L2_between_model_metrics_full$D <- 
+    compute_dist_matrix(all.cluster.dags, L2_dist, symmetric = FALSE)
 L2_between_model_metrics_full$D[is.nan(L2_between_model_metrics_full$D)] <- 1
 L2_between_model_metrics_full$Dsym[is.nan(L2_between_model_metrics_full$Dsym)] <- 1
 ```
@@ -2959,11 +3000,13 @@ plots_L2_similarities_full$p_combined
 ### Averaged L1, L2 similarity between all models
 
 ``` {r}
+library(ggtext)
 plots_L12_mean_consistency_all <- 
     plotting_Ln_between_distances(
         (L1_between_model_and_simulation_metrics$D + L2_between_model_metrics_full$Dsym) / 2,
         Level = "L1-2"
     )
 
-plots_L12_mean_consistency_all$p_combined
+
+plots_L12_mean_consistency_all$p_denro
 ```

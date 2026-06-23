@@ -560,6 +560,10 @@ gcm_fuzzy_L1_consistency <- function(gX, gY) {
     shared <- intersect(gcm_nodelist(gX), gcm_nodelist(gY)) |> 
         pull(name)
     
+    if (length(shared) < 2) {
+        message()
+    }
+    
     imp_ci_gX <- gcm_implied_conditional_independencies(gX) |> 
         mutate(ZXinY = map(Z, \(x) x[x %in% shared])) |> 
         rowwise() |> 
@@ -604,6 +608,16 @@ gcm_fuzzy_L1_consistency <- function(gX, gY) {
             n_uni  = map_int(Zuni, length),
             jaccard = n_int / n_uni
         ) |> 
+        mutate(
+            distance = case_when(
+                # no overlapping conditioning sets, but agree on independence
+                n_int == 0 & n_uni == 0 & indX == indY ~ 0,
+                # no overlapping sets, disagree on independence 
+                n_int == 0 & n_uni == 0 & indX != indY~ 0.5, 
+                # overlapping sets, use jaccard distance
+                TRUE ~ jaccard
+            )
+        ) |> 
         select(-.a, -.b) 
         
     if (nrow(imp_ci) == 0) {
@@ -617,9 +631,9 @@ gcm_fuzzy_L1_consistency <- function(gX, gY) {
         )
     }
     
-    # mean jaccard for hard L1, mean jaccard > 0 for soft
-    L1_soft <- mean(imp_ci$jaccard > 0, na.rm = T)
-    L1_hard <- mean(imp_ci$jaccard, na.rm = T)
+    # mean jaccard for soft L1, mean jaccard > 0 for hard
+    L1_soft <- mean(imp_ci$distance, na.rm = T)
+    L1_hard <- mean(imp_ci$distance > 0, na.rm = T)
     
     return(
         list(
@@ -633,6 +647,9 @@ gcm_fuzzy_L1_consistency <- function(gX, gY) {
 
 # adj_fingerprint 
 # getting the ZX, idX etc from function below
+
+# Needs to work better for M5, D5, D7, ...
+# Many NaNs
 
 gcm_fuzzy_L2_consistency <- function(gX, gY) {
     # Takes in two tidygraph / dagitty objects
@@ -705,8 +722,17 @@ gcm_fuzzy_L2_consistency <- function(gX, gY) {
     
     idXY <-  mean(df.out$idXY)
     idYX <-  mean(df.out$idYX)
-    ErrXY <- sum(df.out$ErrXY) / sum(df.out$ZXsharedMax)
-    ErrYX <- sum(df.out$ErrYX) / sum(df.out$ZYsharedMax)
+    if (sum(df.out$ZXsharedMax) > 0) {
+        ErrXY <- sum(df.out$ErrXY) / sum(df.out$ZXsharedMax)
+    } else {
+        # mean of id agreement
+        ErrXY <- mean(df.out$idXY == df.out$idYX)
+    }
+    if (sum(df.out$ZYsharedMax) > 0) {
+        ErrYX <- sum(df.out$ErrYX) / sum(df.out$ZYsharedMax)
+    } else {
+        ErrYX <- mean(df.out$idYX == df.out$idXY)
+    }
     
     return(list(
         idXY = idXY, idYX = idYX,
