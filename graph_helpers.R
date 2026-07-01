@@ -613,32 +613,33 @@ gcm_fuzzy_L1_consistency <- function(gX, gY) {
                 # no overlapping conditioning sets, but agree on independence
                 n_int == 0 & n_uni == 0 & indX == indY ~ 0,
                 # no overlapping sets, disagree on independence 
-                n_int == 0 & n_uni == 0 & indX != indY~ 0.5, 
+                n_int == 0 & n_uni == 0 & indX != indY~ 1, 
                 # overlapping sets, use jaccard distance
-                TRUE ~ jaccard
+                TRUE ~ 1 - jaccard
             )
         ) |> 
         select(-.a, -.b) 
         
     if (nrow(imp_ci) == 0) {
-        message("No shared independence relationships")
+        # message("No shared independence relationships")
         return(
             list(
-                L1soft = 0,
-                L1hard = 0,
+                distance = 1,
+                L1_consistency = 0,
                 ci_compasisons = imp_ci
             )
         )
     }
     
-    # mean jaccard for soft L1, mean jaccard > 0 for hard
-    L1_soft <- mean(imp_ci$distance, na.rm = T)
-    L1_hard <- mean(imp_ci$distance > 0, na.rm = T)
+    distance <- mean(imp_ci$distance, na.rm = T)
+    L1_consistency <- 1 - distance
+    # no longer used
+    L1_hard <- 1 - mean(imp_ci$distance == 0, na.rm = T)
     
     return(
         list(
-        L1soft = L1_soft,
-        L1hard = L1_hard,
+        distance = distance,
+        L1_consistency = L1_consistency,
         ci_comparisions = imp_ci)
     )
 }
@@ -663,6 +664,11 @@ gcm_fuzzy_L2_consistency <- function(gX, gY) {
     #   (a) Z1 not in Z2 are not in V(g2)
     #   (b) Z2 not in Z1 are not in V(g1)
     #   The count of the nodes invalidating (a) and (b) is ErrXY, ErrYX
+    # The distance is then weighted according to the number of nodes shared
+    # An exception to the distance is returning the maximum value (1) if
+    # gX deems the nodes identifiable and gY thinks they are not, and if
+    # both models agree the node pair is unidentifiable then the min distance 
+    # (0) is returned. 
     if (!(class(gX)[[1]] == "dagitty")) gX <- tidygraph_to_dagitty(gX)
     if (!(class(gY)[[1]] == "dagitty")) gY <- tidygraph_to_dagitty(gY)
     
@@ -672,71 +678,96 @@ gcm_fuzzy_L2_consistency <- function(gX, gY) {
         filter(x != y)
     
     canAdjSet <- function(g, exposure, outcome) {
-        adjustmentSets(x = g, 
-                       exposure = exposure,
-                       outcome = outcome,
-                       type = "canonical") |> 
-            unlist() |> 
-            unname() |> 
-            as.character() |> 
-            sort()
+        s <- adjustmentSets(g, exposure = exposure, outcome = outcome, type = "canonical")
+        if (length(s) == 0) return(NULL)              # not identifiable
+        sort(as.character(unname(unlist(s))))         # identifiable (possibly empty)
     }
     
-    df.out <- 
-        pairs |> 
-        rowwise() |> 
+    df.out <- pairs |>
+        rowwise() |>
         mutate(
-            canonical_ZX = pmap(
-                list(x,y),
-                \(x,y)
-                canAdjSet(gX, x, y)
+            zx = list(canAdjSet(gX, x, y)),
+            zy = list(canAdjSet(gY, x, y)),
+            idX = !is.null(zx),
+            idY = !is.null(zy),
+            idXY = !(idX & !idY),     # identifiable in X ⇒ identifiable in Y
+            idYX = !(idY & !idX),
+            zx_sh = list(intersect(zx, shared)),   
+            zy_sh = list(intersect(zy, shared)),
+            # Err on the adjustment sets
+            ErrXY = length(setdiff(zx_sh, zy_sh)),
+            ErrYX = length(setdiff(zy_sh, zx_sh)),
+            ZXsharedMax = length(zx_sh),
+            ZYsharedMax = length(zy_sh)
+        ) |>
+        mutate(
+            # per-pair X->Y distance
+            dXY = case_when(
+                # identifiability violation: max distance
+                idX & !idY            ~ 1,   
+                # agree not identifiable: min distance (and no adj sets)
+                !idX & !idY           ~ 0,   
+                # graded set error
+                idX &  idY            ~ ErrXY / pmax(ZXsharedMax, 1),  
+                # antecedent false: excluded. X => Y uninformative for X => !Y
+                TRUE                  ~ NA_real_                   
             ),
-            canonical_ZY = pmap(
-                list(x,y),
-                \(x,y)
-                canAdjSet(gY, x, y)
+            dYX = case_when(
+                idY & !idX            ~ 1,
+                !idY & !idX           ~ 0,
+                idY &  idX            ~ ErrYX / pmax(ZYsharedMax, 1),
+                TRUE                  ~ NA_real_
             )
         ) |> 
+        ungroup() |> 
         mutate(
-            idX = length(canonical_ZX) > 0,
-            idY = length(canonical_ZX) > 0
+            # weight: how much comparable evidence underlies each pair's score
+            w_XY = case_when(
+                # excluded, won't enter mean (this is when X => !Y)
+                is.na(dXY)                          ~ 0,            
+                # VACUOUS zero: not comparable. This is where the denominator
+                # is forced to be 1 in dXY above
+                idX & idY & ZXsharedMax == 0        ~ 0,            
+                # genuine mutual-agreement on non-identifiability (a strong statement)
+                !idX & !idY                         ~ 1,            
+                # weight by comparable nodes using the set error from dXY
+                TRUE                                ~ ZXsharedMax   
+            ),
+            w_YX = case_when(
+                is.na(dYX)                          ~ 0,            
+                idY & idX & ZYsharedMax == 0        ~ 0,            
+                !idY & !idX                         ~ 1,            
+                TRUE                                ~ ZYsharedMax   
+            )
         ) |> 
-        mutate(
-            idXY = !(idY & !idX),
-            idYX = !(idX & !idY)
-        ) |> 
-        mutate(
-            # nodes in adjustment sets in both models
-            ZXshared = list(canonical_ZX[canonical_ZX %in% shared]),
-            ZYshared = list(canonical_ZY[canonical_ZY %in% shared])
-        ) |> 
-        mutate( # Err is count of nodes in shared 
-            ZXsharedMax = length(ZXshared),
-            ZYsharedMax = length(ZYshared),
-        ) |> 
-        mutate(
-            ErrXY = sum(!(ZXshared %in% ZYshared)),
-            ErrYX = sum(!(ZYshared %in% ZXshared))
-        ) |> 
-        select(x, y, idXY, idYX, ErrXY, ErrYX, everything())
+        select(x, y, dXY, dYX, everything())
     
-    idXY <-  mean(df.out$idXY)
-    idYX <-  mean(df.out$idYX)
-    if (sum(df.out$ZXsharedMax) > 0) {
-        ErrXY <- sum(df.out$ErrXY) / sum(df.out$ZXsharedMax)
-    } else {
-        # mean of id agreement
-        ErrXY <- mean(df.out$idXY == df.out$idYX)
-    }
-    if (sum(df.out$ZYsharedMax) > 0) {
-        ErrYX <- sum(df.out$ErrYX) / sum(df.out$ZYsharedMax)
-    } else {
-        ErrYX <- mean(df.out$idYX == df.out$idXY)
-    }
+    dXY <- weighted.mean(df.out$dXY, w = df.out$w_XY, na.rm = TRUE)
+    dYX <- weighted.mean(df.out$dYX, w = df.out$w_YX, na.rm = TRUE)
+    
+    L2XY <- 1 - dXY
+    L2YX <- 1 - dYX
+    
+    # idXY <-  mean(df.out$idXY)
+    # idYX <-  mean(df.out$idYX)
+    # if (sum(df.out$ZXsharedMax) > 0) {
+    #     ErrXY <- sum(df.out$ErrXY) / sum(df.out$ZXsharedMax)
+    # } else {
+    #     # mean of id agreement
+    #     ErrXY <- mean(df.out$idXY == df.out$idYX)
+    # }
+    # if (sum(df.out$ZYsharedMax) > 0) {
+    #     ErrYX <- sum(df.out$ErrYX) / sum(df.out$ZYsharedMax)
+    # } else {
+    #     ErrYX <- mean(df.out$idYX == df.out$idXY)
+    # }
     
     return(list(
-        idXY = idXY, idYX = idYX,
-        ErrXY = ErrXY, ErrYX = ErrYX,
+        # causal consistency (asymmetric)
+        L2XY = L2XY, L2YX = L2YX,
+        # L2-consistency distance between models (asymmetric)
+        dXY = dXY, dYX = dYX,
+        # artefacts for diagnosis
         df = df.out, shared_nodes = shared
     ))
     

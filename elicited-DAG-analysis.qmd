@@ -13,15 +13,6 @@ format:
 # TODO
 
 
-## Metrics between models, and between simulations
-
-
-
-## Check renamed nodes
-
-- fiddling with these could have broken some nice names and measurability coding
-
-
 ## Write functions to help node coding with causal abstraction theory
 
 - Given a graph, suggest L1-L2 permissible abstractions (to some degree)
@@ -76,6 +67,11 @@ The models are indexed as $\mathcal{M}=\{M_1,M_2,\dots,M_8 \}$ with their corres
 
 We will also be applying coarsening functions to create cluster DAGs. A typical coarsening functions $\varphi$ is applied to the graph, and within it all the nodes and edges. So $\varphi (G_{k})=\varphi G_{k}=(\mathbf{V}_{\varphi G_k},\mathbf{E}_{\varphi G_k})$, which will also refer to as a new cluster model $G^C_{k}=\varphi G_k$ for slightly cleaner notation, and including the $C$ for cluster. The coarsening function $\varphi$ induces an equivalence relation $\sim _\varphi$ on $\mathbf{V}_{G_k}$ where $V_i \sim_\varphi V_j$ iff $\varphi (V_i) = \varphi (V_j)$, i.e. both nodes map to the same cluster.  In this cluster model we would find $\mathbf{V}_{\varphi G_k}$. The coarsened / cluster nodes would be $[V_{i}]_{\varphi}=\{V_j \in \mathcal{V}:V_j \sim_{\varphi} V_i\}$, the equivalence class of nodes $[V_i]_{\varphi}$, or simply $[V_i]$ if $\varphi$ is clear from the context. These clusters can be relabled and reindexed to $C_a = [V_i]_{\varphi}$ for legibility.
 The edges in $\varphi G_{k}=G_{k}^{C}$ are then $E^{\varphi}_{[i][j]}=[V_i]\rightarrow [V_j]=C_a \rightarrow C_b=E^{C}_{ab}$. Choosing to use the $C$ or $\varphi$ syntax depends on the context - are we mainly discussing the cluster model $G_k^C$ or the processes of coarsening $\varphi G_{k}$?
+There is also the *causal degradation* produced by $\varphi$, which we denote as $\mathrm{deg}_\varphi$ generally, $\mathrm{deg}_\varphi({G_k})$ as applied to a particular model, and $\mathcal{L}_i{\text{-}}\mathrm{deg}_\varphi(G_k)$ to specify a particular level of the causal hierarchy, $\mathcal{L}_i:i\in \{1,2,3\}$. 
+
+A measure of *causal consistency* is also computed, but this is between two models, rather than under the process of a clustering. So 
+
+Notation for adjustment sets? Things like that?
 
 
 
@@ -88,22 +84,20 @@ The edges in $\varphi G_{k}=G_{k}^{C}$ are then $E^{\varphi}_{[i][j]}=[V_i]\righ
 source("load-GCMs.R")
 ```
 
-``` {r}
+``` {r colour-settings}
 # Some colours
 # \definecolor{myochre}{RGB}{204,119,34}
 # \definecolor{mygum}{RGB}{87,180,66}
 myochre <- rgb(204, 119, 34, maxColorValue = 255)
 mygum <- rgb(87, 180, 66, maxColorValue = 255)
+nt_pal <- palette.colors()[c(1,9,8,4,2,3)]
 ```
 
 ## Graphical Causal Models
 
 Modelling sessions were originally run on Loopy, then transcribed into DAGitty (online) to generate the following `dot` language syntax for importing into `R`. A better way of doing this is under development. 
 
-
-### Tidy graphs
-
-Data imported as DAGitty objects, but need to be in tidygraph format for many calculations and visualisations.
+Data imported as `DAGitty` objects, but need to be in `tidygraph` format for many calculations and visualisations.
 
 
 Creating a list of all the DAGs in tidy format:
@@ -206,6 +200,7 @@ name_node_nice_name <- tribble(
     "H.Tut", "Help from teacher / tutor",
     "H.Tut.Fb", "Feedback from teacher / tutor",
     "LD", "Learning design",
+    "LD.Other", "Other learning design",
     "LD.AIguide", "Guidance on AI use",
     "LD.Task", "Task design",
     "LD.Task.Code", "Coding task design",
@@ -225,10 +220,13 @@ name_node_nice_name <- tribble(
     "S.Aff.MindSet", "Student mindset",
     "S.Aff.Safe", "Student feels safe",
     "S.Aff.WrkLd", "Student workload pressure",
+    "S.Cp.WrkLd", "Student workload pressure",
+    "S.Aff.Hsk", "Student help seeker",
     "S.Att.Eq", "Student equity group",
     "S.Cp.Hsk", "Student help seeker",
     "S.Att.Nro", "Student neuro-divergent",
     "S.Att.SocCap", "Student social capital",
+    "S.Kn.Aca", "Student academic skill",
     "S.Cp.Aca", "Student academic skill",
     "S.Cp.Aca.Post", "Student academic skill: Post grade",
     "S.Cp.EvJdg", "Student evaluative judgement",
@@ -246,12 +244,15 @@ name_node_nice_name <- tribble(
     "T.Act.UseAI", "Teacher use of AI",
     "T.Aff.Integ", "Teacher acts with integrity",
     "T.Aff.WrkLd", "Teacher workload pressure",
+    "T.Cp.WrkLd", "Teacher workload pressure",
     "T.Cp.Inst", "Teacher instruction quality",
     "T.Cp.KnStu", "Teacher knows students",
     "T.Cp.Mark", "Teacher reliably marks",
     "T.Kn.AI", "Teacher AI literacy",
+    "T.Cp.AI", "Teacher AI expertise",
     "T.Kn.Ass", "Teacher assessment literacy",
-    "T.Kn.Sub", "Teacher subject knowledge"
+    "T.Kn.Sub", "Teacher subject knowledge",
+    "T.Cp.Sub", "Teacher subject expertise"
 )
 
 node_group_nice_name <- tribble(
@@ -284,7 +285,10 @@ node_group_nice_name <- tribble(
 
 ### Coding node groups
 
-Note: Maybe change T.Kn into two - Teacher knowledge (applied to learning) and Teacher judgement (applied to assessing).
+This process involved iterating between:
+
+1. Examining the transcript, the node description (label in the diagram), and forming an initial classification of the node. A natural place for a node-group to form was where in one model a node was broken into sub-components, where in others it was kept whole. `Student knowledge` was a key example of this, where several models split this into finer grained nodes, where others did not. 
+2. After this the graph coarsening according to the map $\varphi(V_i)=\mathrm{nodegroup}(V_i)$, calculating the $\mathcal{L}_1$ and $\mathcal{L}_2$ cost of clustering the nodes into their node groups. From this two operations were performed on the cluster graph: (a) identifying which node clusters had contributed most to the degradation of the causal consistency, and (b) parts of the cluster graph that could potentially be coarsened further. 
 
 ``` {r node-group}
 code_node_group <- function(v) {
@@ -356,14 +360,14 @@ code_node_type <- function(n) {
         fl == "L" ~ "Learning design",
         fl == "G" ~ "Assessment data"
     ) |> 
-        factor(levels = c(
+        factor(levels = rev(c(
             "Learning design", 
             "Teacher", 
             "Student",
             "Help", 
             "Learning data",
             "Assessment data"
-            ))
+            )))
 }
 
 ```
@@ -450,7 +454,7 @@ coarsen_node_measurability <- function(ng_list) {
 
 ## Graph helper functions
 
-Convention is that these all start with `g_` and accept a `tidygraph` object as input. Functions outlined in the `graph_helpers.R` script. 
+Functions outlined in the `graph_helpers.R` script. Functions starting with `gcm_` should operate on either a `dagitty` or `tidygraph` object. 
 
 ### Graph metrics functions
 
@@ -532,8 +536,6 @@ all_edges_in_models_with_metrics <-
 
 ## Creating merged graph
 
-
-
 ``` {r making-merged-fine-graph}
 
 merged_edges <- 
@@ -559,11 +561,29 @@ This is based on the coding of the nodes into node groups.
 Here we merge nodes into node groups before generating plot later. This has the potential to introduce loops depending on how the constructs were built, so we need to check the causal consistency between the fine-grained graph and the clustered / merged / higher-level graph. 
 
 ``` {r}
+clean_node_group_cluster_graph <- function(cdag) {
+    # After coarsening with code_node_group cleans up some of the 
+    # names and nodes
+    cdag |> 
+        activate(nodes) |> 
+        mutate(node_type = code_node_type(name)) |>
+        select(-any_of(c("nice_name", "node_group"))) |> 
+        left_join(
+            node_group_nice_name |> 
+                rename(name = node_group),
+            by = "name") 
+}
+
 node_group_cluster_graph_from_merged <- 
-    gcm_cluster_graph(merged_all_graph, code_node_group)
+    gcm_cluster_graph(merged_all_graph, code_node_group) |> 
+    clean_node_group_cluster_graph()
+    
 
 tcdags_node_group <- 
-    map(tdags, \(g)gcm_cluster_graph(g, code_node_group)) 
+    map(tdags, 
+        \(g)
+        gcm_cluster_graph(g, code_node_group) |> 
+            clean_node_group_cluster_graph()) 
 
 node_group_cluster_graph_from_clusters <- 
     gcm_merge(
@@ -623,22 +643,6 @@ dag_complexity_metrics <-
     inner_join(all_paths_summary, by = "Model")
 ```
 
-### Graph dissimilarity??
-
-
-``` {r}
-coarsened_tdags <- imap(
-    tdags, 
-    \(g,n)
-    gcm_cluster_graph(g, code_node_group))
-
-coarsest_tdags <- imap(
-    tdags, 
-    \(g,n)
-    gcm_cluster_graph(g, code_node_type))
-
-```
-
 ### Node group level metrics
 
 ``` {r}
@@ -653,260 +657,6 @@ all_nodes_with_metrics <-
 gcm_metrics <- 
     inner_join(session_data, dag_complexity_metrics, by = "Model") 
 ```
-# Causal consistency
-
-## Preservation of L1, L2
-
-THIS BIT NEEDS TO BE RE-WRITTEN FOR THE NEW CODE
-
-L1 (association) and L2 (intervention / do) levels on the causal hierarchy can be examined at a graph level through:
-
-- $\mathcal{L}_1$ Examining all conditional probability implications. If these are preserved between graphs then the two graphs are $\mathcal{L}_1$-consistent. ? An equivalent may be having similar / same CPDAGs - complete partial DAGs - which are the Markov equivalent class of DAGs. These induce the same conditional independencies (Thm 1.2.4 in Pearl 2009). These are the skeleton + all v-structures (colliders) arrowed in.
-- $\mathcal{L}_2$ Examining all 'do' operator implications. If these are preserved between graphs then the two graphs are $\mathcal{L}_2$-consistent. Or - use the Structural Intervention Distance (Peters & Buhlmann, 2015)
-- $\mathcal{L}_3$ Is not explored - this would probably require a SCM, not just the DAG.
-
-## Causal Consistency when Clustering
-
-### L1 consistency when clustering
-
-This computes two metrics, the loss ratio of conditional independence relationships (ci_loss) and the rate of introduction of spurious ancestors when coarsening. CI loss indicates how often a conditional independence relationship in the fine graph did not have its analogue in the coarsened graph. Spurious ancestors indicates the rate at which merged nodes introduced new ancestors in the cluster DAG - violating L1 consistency (CITE - Annan???)
-
-``` {r L1-consistency-of-clustering}
-clustering_L1_consistency <- 
-    tdags |> 
-    imap(
-        \(g, m)
-        gcm_cluster_L1_consistency(
-            g, code_node_group)$clustering_L1_consistency
-    ) |> 
-    list_rbind(names_to = "Model")
-```
-
-``` {r}
-clustering_L1_consistency |> 
-    knitr::kable(
-        caption = "L1-consistency metrics when coarsening GCMs",
-        digits = 4)
-```
-
-### L2 consistency when clustering
-
-This computes a single error metric - the % of lost identifiable pairs when coarsening. So this is where the $P(Y|do(X))$ is identifiable in the fine graph but $P(\varphi(Y)|do(\varphi(X)))$ is not identifiable in the coarsened cluster graph. 
-
-``` {r L2-consistency-of-clustering}
-clustering_L2_consistency <- 
-    tdags |> 
-    imap(
-        \(g,m)
-        gcm_cluster_L2_consistency(g, code_node_group)) |> 
-    list_rbind(names_to = "Model")
-```
-
-``` {r}
-clustering_L2_consistency |> 
-    knitr::kable(
-        caption = "L2-consistency metrics when coarsening GCMs",
-        digits = 4)
-```
-
-## Causal consistency between models
-
-``` {r dist-matrix-helper-funcion}
-
-library(softImpute)
-fit <- softImpute(D_with_NA, rank.max = 4, lambda = 0)
-D_filled <- complete(D_with_NA, fit)
-
-compute_dist_matrix <- function(
-        model_list, # list of models
-        .df, # function that computes distance between two models
-        symmetric = FALSE,
-        impute_undefined = TRUE) {
-    n  <- length(model_list)
-    nm <- names(model_list) 
-    D <- matrix(0, n, n, dimnames = list(nm, nm))
-    
-    if (symmetric) {
-        # fill upper triangle, mirror, zero diagonal
-        for (i in seq_len(n - 1)) {
-            for (j in (i + 1):n) {
-                d <- .df(model_list[[i]], model_list[[j]])
-                D[i, j] <- d
-                D[j, i] <- d
-            }
-        }
-        Dsym <- D
-    } else {
-        for (i in seq_len(n)) {
-            for (j in seq_len(n)) {
-                if (i != j) {
-                    D[i, j] <- .df(
-                        model_list[[i]], 
-                        model_list[[j]])
-                }
-            }
-        }
-        Dsym <- (D + t(D)) / 2
-    }
-    
-    if (impute_undefined) {
-        # First fill Dsym on mirror
-        fill <- is.nan(Dsym) & !is.nan(t(Dsym)) 
-        Dsym[fill] <- t(Dsym)[fill]
-        if (any(is.nan(D))) {
-            message("Imputing missing values")
-            fit <- softImpute(D, rank.max = 4, lambda = 0)
-        D <- complete(D, fit)
-        }
-        if (any(is.nan()))
-        fitSym <- softImpute(Dsym, rank.max = 4, lambda = 0)
-        Dsym <- complete(Dsym, fit)
-    } 
-    
-    return(list(D = D, Dsym = Dsym))
-}
-
-```
-
-``` {r between-distances-plotting}
-library(ggdendro)
-
-fmt_lab <- function(x) {
-    # split leading letters from trailing digits: "M1" -> "M", "1"
-    highlight_col = rgb(87, 180, 66, maxColorValue = 255) # mygum
-    letter <- sub("([A-Za-z]+).*", "\\1", x)
-    num    <- sub("[A-Za-z]+", "", x)
-    ifelse(
-        startsWith(x, "D"),
-        sprintf("<span style='background-color:%s'>%s<sub>%s</sub></span>", highlight_col, letter, num),
-        sprintf("%s<sub>%s</sub>", letter, num)   # non-M: subscript only, no highlight
-    )
-}
-
-plotting_Ln_between_distances <- function(D, 
-                                      Level = "L1") {
-    D_sym <- (D + t(D)) / 2
-    nm <- D |> colnames()
-    # --- cluster on the symmetric matrix ---
-    hc  <- hclust(as.dist(D_sym), method = "average")
-    ord <- hc$order
-    lev <- nm[ord]  
-
-    # --- dendrogram panel (rotated to sit above the heatmap) ---
-    dend <- dendro_data(hc)
-    
-    p_dend <- ggplot() +
-        geom_segment(
-            data = segment(dend),
-            aes(x = x, y = y, xend = xend, yend = yend),
-            linewidth = 0.4, colour = "grey30"
-        ) +
-        scale_x_continuous(
-            breaks = seq_along(lev),
-            labels = lev,
-            limits = c(0.5, length(lev) + 0.5),
-            expand = expansion(add = 0),
-            name = "Model"
-        ) +
-        scale_y_discrete(labels = fmt_lab) +
-        theme_minimal() +
-        coord_flip() +
-        theme(
-            axis.title       = element_blank(),
-            axis.text.x      = element_blank(),
-            axis.ticks       = element_blank(),
-            panel.grid       = element_blank()
-        ) 
-    
-    D_long <- as_tibble(D_sym, rownames = "from") |>
-        pivot_longer(-from, names_to = "to", values_to = "dist") |>
-        mutate(
-            from = factor(from, levels = lev),
-            to   = factor(to,   levels = lev)
-        )
-    
-    p_heat <- ggplot(D_long, aes(to, from, fill = dist)) +
-        geom_tile(colour = "white", linewidth = 0.5) +
-        geom_text(
-            aes(label = round(dist, 2)), 
-            size = 3, colour = "grey15") +
-        scale_fill_viridis_c(
-            name = str_c(Level, "-consistency\ndiscrepency"), 
-            direction = -1) +
-        scale_x_discrete(position = "top", labels = fmt_lab) +
-        labs(x = NULL, y = NULL) +
-        coord_fixed() +
-        theme_minimal(base_size = 12) +
-        theme(
-            # axis.text.x = element_text(angle = 45, hjust = 0),
-            panel.grid  = element_blank(),
-            legend.position = "left"
-        )
-    
-    # combined 
-    combined <- p_heat + p_dend
-
-    return(list(
-        p_heat = p_heat,
-        p_denro = p_dend,
-        p_combined = combined
-    ))
-
-}
-```
-
-### L1 consistency between models
-
-``` {r}
-# scalar L1 distance between two models
-L1_dist <- function(m_i, m_j, mode = "soft") {
-  fuzzyL1 <- gcm_fuzzy_L1_consistency(
-      gX = m_i, gY = m_j)
-  if (mode == "soft") {
-      return(1 - fuzzyL1$L1soft)
-  } else {
-      return(1 - fuzzyL1$L1hard)
-  }
-}
-
-L1_between_model_metrics <- 
-    compute_dist_matrix(tcdags_node_group, L1_dist, symmetric = TRUE)
-
-plots_L1_similarities <- plotting_Ln_between_distances(
-    L1_between_model_metrics$D, Level = "L1")
-
-```
-
-``` {r}
-plots_L1_similarities$p_combined
-```
-
-### L2 consistency between models
-
-``` {r}
-# L2 distance between two models
-L2_dist <- function(m_i, m_j) {
-  fuzzyL2 <- gcm_fuzzy_L2_consistency(
-      gX = m_i, gY = m_j)
-  return(fuzzyL2$ErrXY)
-}
-
-L2_between_model_metrics <- 
-    compute_dist_matrix(
-        tcdags_node_group, L2_dist, symmetric = FALSE)
-
-```
-
-``` {r}
-plots_L2_similarities <- plotting_Ln_between_distances(
-    L2_between_model_metrics$D, 
-    L2_between_model_metrics$Dsym,
-    Level = "L2"
-)
-
-plots_L2_similarities$p_combined
-```
-
 
 # Visualisations
 
@@ -920,9 +670,9 @@ all_nodes_with_metrics |>
     arrange(node_type)
 ```
 
-## Session and other
+## Modelling sessions, time and perceptions
 
-#### Figure: Time spent with model and modelling utility
+### Figure: Time spent with model and modelling utility
 
 ``` {r}
 # denser option - radial arc bars for observable
@@ -1063,45 +813,18 @@ gcm_metrics |>
 
 
 
-### Edge coherence
-
-How often do causal paths point in the same direction? To examine this across all models we must look at relationships between 
-
-``` {r}
-n_possible_edges <- nrow(all_possible_edges)
-n_edges <- nrow(all_edges_in_models_with_metrics)
-
-prob_universal_inclusion_given_existence <- 
-    mean(all_edges_in_models_with_metrics$p_direct == 1)
-
-prob_universal_descendant_inclusion_given_existence <- 
-    mean(all_edges_in_models_with_metrics$p_descendant == 1)
-
-prob_universal_descendant_inclusion_given_descendant_existance <- 
-    all_edges_sum |> 
-    filter(p_descendant > 0) |> 
-    mutate(universal_descendant = p_descendant == 1) |> 
-    pull(universal_descendant) |> 
-    mean()
-    
-```
-
-We examine the `r n_edges` edges from `r n_possible_edges` possible edges across the 8 models, and in addition include the ancestor - descendant pairs. From this we define a few events:
-
-- $E_{ij}\in M$ for and edge belonging to a model
-- $E_{ij} \in \mathcal{M}$
-
-- $P(E_{ij} \in M_k|i,j\in V(M_k), E_{ij} \in \mathcal{E})$ - the probability of universal inclusion of an edge in all models it could be included in, given it appears in at least one model. This is `r prob_universal_inclusion_given_existence`
-- $P(De_{ij} \in M_k|i,j\in V(M_k), E_{ij} \in \mathcal{E})$ - the probability of universal inclusion of a descendant in all models it could be included in, given the edge appears in at least one model. This is `r prob_universal_descendant_inclusion_given_existence`. Could maybe use the squiggle notation here of mediated path?
 
 
-### Merging graphs
+## Merging graphs
 
 ``` {r plotting-merged-graph}
 
 merged_all_graph_layout <- create_layout(
-    merged_all_graph, # needs switched boolean
+    merged_all_graph %E>%
+        mutate(switched = if_else(
+            switched, "contested", "alligned")), # needs switched boolean
     layout = "sugiyama")
+
 merged_all_graph_layout_adjusted <- 
     merged_all_graph_layout |> 
     mutate(
@@ -1160,31 +883,29 @@ plot_fine_graph_from_layout <- function(lyt, weight_nodes = TRUE) {
             
     }
     pp +
-        scale_colour_okabe_ito() +
+        scale_colour_discrete(palette = nt_pal) +
         # geom_node_text(aes(label = name, size = node_w, alpha = node_w), nudge_y = -.5) +
         theme_graph() +
         scale_edge_alpha_continuous(range = c(0.15,0.8)) +
         scale_alpha_continuous(range = c(0.3,1)) +
         theme(legend.position = "none",
-              plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "pt")) +
+              plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"))  +
         xlim(x_limits_fine) +
         ylim(y_limits_fine)
 }
 
-g_plot_fine <- function(g, lyt = merged_all_graph_layout_adjusted, weight_nodes = TRUE) {
+g_plot_fine <- function(g, 
+                        lyt = merged_all_graph_layout_adjusted, 
+                        weight_nodes = TRUE) {
     create_layout(g, layout = "sugiyama") |> 
-        left_join(lyt |> select(x,y,name,node_group,node_type,node_w), by = "name",
-                  suffix = c(".default", "")) |> 
+        left_join(
+            lyt |> 
+                select(x,y,name,node_group,node_type,node_w), 
+            by = "name",
+            suffix = c(".default", "")) |> 
         plot_fine_graph_from_layout(weight_nodes = weight_nodes)
 }
 
-pMergedFineLegend <- merged_all_graph_layout_adjusted |> 
-    g_plot_fine() + 
-    theme(legend.position = "bottom") +
-    guides(size = "none", edge_width = "none", alpha = "none", edge_alpha = "none",
-           color = guide_legend(nrow = 1)) +
-    theme(legend.title = element_blank())
-pMergedFineLegend
 
 pMergedFineLegendTall <- merged_all_graph_layout_adjusted |> 
     g_plot_fine() + 
@@ -1192,170 +913,10 @@ pMergedFineLegendTall <- merged_all_graph_layout_adjusted |>
     guides(size = "none", alpha = "none", edge_alpha = "none", edge_width = "none",
            color = guide_legend(ncol = 2)) +
     theme(legend.title = element_blank())
-pMergedFine <- pMergedFineLegend +
-    theme(legend.position = "none")
-
-pMergedFineLabelled <- pMergedFine + 
-    geom_node_text(
-        aes(label = nice_name, size = node_w, colour = node_type), alpha = 0.6, 
-        data = merged_all_graph_layout_adjusted |>  filter(node_w > 0), repel = TRUE, max.overlaps = 4) +
-    ggnewscale::new_scale("size") +
-    scale_size(range = c(3,6), name = "text-size")
-pMergedFineLabelled
-
-# Extract legend
-leg <- cowplot::get_legend(pMergedFineLegend)
-# Turn it into a ggplot object for saving
-legplot <- cowplot::ggdraw(leg)
-# Save just the legend
-ggsave("dag_legend.jpg", legplot, width = 6, height = 1)
 
 leg_tall <- cowplot::get_legend(pMergedFineLegendTall)
 leg_tall_plot <- cowplot::ggdraw(leg_tall)
 
-
-# ggsave("dagcm_merged_fine.svg", pMergedFine, width = 6, height = 4)
-# ggsave("dagcm_merged_fine_labelled.svg", pMergedFineLabelled, width = 6, height = 4)
-```
-
-
-``` {r}
-p1 <- g_plot_fine(tdags$M1, weight_nodes = FALSE)
-p2 <- g_plot_fine(tdags$M2, weight_nodes = FALSE)
-p3 <- g_plot_fine(tdags$M3, weight_nodes = FALSE)
-p4 <- g_plot_fine(tdags$M4, weight_nodes = FALSE)
-p5 <- g_plot_fine(tdags$M5, weight_nodes = FALSE)
-p6 <- g_plot_fine(tdags$M6, weight_nodes = FALSE)
-p7 <- g_plot_fine(tdags$M7, weight_nodes = FALSE)
-p8 <- g_plot_fine(tdags$M8, weight_nodes = FALSE)
-
-# Plot border 
-    # theme(
-    #   plot.background = element_rect(
-    #     colour = "grey70", 
-    #     fill = NA,
-    #     linewidth = 1
-    #   )
-    # )
-
-hl_text_size <- 1.5
-hl_text_alpha <- 0.7
-
-p2peerHighlight <- p2 + 
-    geom_node_point(size = 3, shape = 1, alpha = 0.6,
-    data = p2$data |>  filter(name == "H.Peer")) +
-    geom_node_point(size = 5, shape = 1, alpha = 0.3,
-    data = p2$data |>  filter(name == "H.Peer")) +
-    geom_node_point(size = 7, shape = 1, alpha = 0.1,
-    data = p2$data |>  filter(name == "H.Peer")) +
-    geom_node_text(aes(label = nice_name, colour = node_type), 
-                   size = hl_text_size , alpha = hl_text_alpha,
-    data = p2$data |>  filter(name == "H.Peer") |> 
-        inner_join(name_node_nice_name, by = "name"), repel = T) 
-p3peerHighlight <- p3 + 
-    geom_node_point(size = 3, shape = 1, alpha = 0.6,
-    data = p3$data |>  filter(name == "H.Peer")) +
-    geom_node_point(size = 5, shape = 1, alpha = 0.3,
-    data = p3$data |>  filter(name == "H.Peer")) +
-    geom_node_point(size = 7, shape = 1, alpha = 0.1,
-    data = p3$data |>  filter(name == "H.Peer")) +
-    geom_node_text(aes(label = nice_name, colour = node_type), 
-                   size = hl_text_size , alpha = hl_text_alpha,
-    data = p3$data |>  filter(name == "H.Peer") |> 
-        inner_join(name_node_nice_name, by = "name"), repel = T) 
-p4peerHighlight <- p4 +
-    geom_node_point(size = 3, shape = 1, alpha = 0.6,
-    data = p4$data |>  filter(name == "H.Peer")) +
-    geom_node_point(size = 5, shape = 1, alpha = 0.3,
-    data = p4$data |>  filter(name == "H.Peer")) +
-    geom_node_point(size = 7, shape = 1, alpha = 0.1,
-    data = p4$data |>  filter(name == "H.Peer")) +
-    geom_node_text(aes(label = nice_name, colour = node_type), 
-                   size = hl_text_size , alpha = hl_text_alpha,
-    data = p4$data |>  filter(name == "H.Peer") |> 
-        inner_join(name_node_nice_name, by = "name"), repel = T) 
-
-p7KnHighlight <- p7 +
-    geom_node_point(size = 3, shape = 5, alpha = 0.6,
-    data = p7$data |>  filter(str_detect(name, "Kn"))) +
-    geom_node_point(size = 5, shape = 5, alpha = 0.3,
-    data = p7$data |>  filter(str_detect(name, "Kn"))) +
-    geom_node_point(size = 7, shape = 5, alpha = 0.1,
-    data = p7$data |>  filter(str_detect(name, "Kn"))) +
-    geom_node_text(aes(label = nice_name, colour = node_type), 
-                   size = hl_text_size , alpha = hl_text_alpha,
-    data = p7$data |>  filter(str_detect(name, "Kn")) |> 
-        inner_join(name_node_nice_name, by = "name"), repel = T) 
-
-p5KnHighlight <- p5 +
-    geom_node_point(size = 3, shape = 5, alpha = 0.6,
-    data = p5$data |>  filter(str_detect(name, "Kn"))) +
-    geom_node_point(size = 5, shape = 5, alpha = 0.3,
-    data = p5$data |>  filter(str_detect(name, "Kn"))) +
-    geom_node_point(size = 7, shape = 5, alpha = 0.1,
-    data = p5$data |>  filter(str_detect(name, "Kn"))) +
-    geom_node_text(aes(label = nice_name, colour = node_type), 
-                   size = hl_text_size , alpha = hl_text_alpha,
-    data = p5$data |>  filter(str_detect(name, "Kn")) |> 
-        inner_join(name_node_nice_name, by = "name"), repel = T) 
-
-p6KnHighlight <- p6 +
-    geom_node_point(size = 3, shape = 5, alpha = 0.6,
-    data = p6$data |>  filter(str_detect(name, "Kn"))) +
-    geom_node_point(size = 5, shape = 5, alpha = 0.3,
-    data = p6$data |>  filter(str_detect(name, "Kn"))) +
-    geom_node_point(size = 7, shape = 5, alpha = 0.1,
-    data = p6$data |>  filter(str_detect(name, "Kn"))) +
-    geom_node_text(aes(label = nice_name, colour = node_type), 
-                   size = hl_text_size , alpha = hl_text_alpha,
-    data = p6$data |>  filter(str_detect(name, "Kn")) |> 
-        inner_join(name_node_nice_name, by = "name"), repel = T) 
-# 
-
-```
-
-``` {r}
-pAllFine <- (p1 | p2 | p3 | p4) / (p5 | p6 | p7 | p8)
-pAllFine
-# ggsave("dags_All_fine.svg", pAllFine, width = 18, height = 9)
-```
-
-#### Figure: Model graphs, all and merged
-
-``` {r}
-library(grid)
-tag_plot <- function(p, tag, x = 0, y = 0.9, fontsize = 8) {
-  p + annotation_custom(
-    grid::textGrob(tag, x = x, y = y, 
-                   hjust = 0, vjust = 1, gp = gpar(fontsize = fontsize))
-  )
-}
-
-pAll3by3 <- 
-    (
-        tag_plot(p2peerHighlight,"a")| 
-            tag_plot(p8, "b") | 
-            tag_plot(p7KnHighlight, "c")) / 
-    (
-        tag_plot(p4peerHighlight, "d") | 
-            tag_plot(p1, "e") | 
-            tag_plot(p5KnHighlight, "f")) / 
-    (
-        tag_plot(p3peerHighlight, "g") | 
-            leg_tall_plot | 
-            tag_plot(p6KnHighlight, "h")) 
-     
-
-pFineTogetherLabelled <- pAll3by3 / tag_plot(pMergedFineLabelled, "i") + plot_layout(heights = c(1,1,1,3))
-pFineTogether <- pAll3by3 / pMergedFine + plot_layout(heights = c(1,1,1,3))
-pFineTogetherLabelled
-
-# ggsave("dags_fine_all_and_merged.png", pFineTogether, width = 9, height = 10, dpi = 900)
-# ggsave("dags_fine_all_and_merged.svg", pFineTogether, width = 9, height = 10)
-ggsave("figures/FIG--dags_fine_all_and_merged_labelled.jpg", pFineTogetherLabelled, width = 9, height = 10, dpi = 900)
-# ggsave("dags_fine_all_and_merged_labelled.svg", pFineTogetherLabelled, width = 9, height = 10)
-
-print("a, d, g are models M2, M3, M4; b, e are M8 and M1; c, f, h are M7, M5, M6. Closest models are therefore d and g (D-measure 0.105) and the furthest are e and 7 (D-measure 0.324)")
 ```
 
 
@@ -1363,8 +924,7 @@ print("a, d, g are models M2, M3, M4; b, e are M8 and M1; c, f, h are M7, M5, M6
 merged_coarse_layout <- 
     merged_all_graph |> 
     gcm_cluster_graph(code_node_group) |> 
-    activate(nodes) |> 
-    mutate(node_type = code_node_type(name)) |> 
+    clean_node_group_cluster_graph() |> 
     create_layout(layout = "sugiyama") |> 
     mutate(
         x = case_when(
@@ -1433,7 +993,7 @@ pCoarseMerged <- merged_coarse_layout |>
 ```
 
 
-#### Common patterns - fine
+### Common patterns - fine
 
 Most common three-node patterns. 
 
@@ -1441,11 +1001,11 @@ Most common three-node patterns.
 merged_all_graph |> 
     activate("nodes") |>
     filter(node_w > 3) |>
-    activate("edges") |>
-    filter(edge_w > 1) |>
+    # activate("edges") |>
+    # filter(edge_w > 1) |>
     g_plot_fine() +
     geom_node_text(aes(label = nice_name, colour = node_type), 
-                   alpha = hl_text_alpha, repel = TRUE)
+                   alpha = 0.7, repel = TRUE)
 
 ```
 
@@ -1475,7 +1035,8 @@ plot_highlighted_fine_graph <- function(model = 1, LEGEND_POSITION = "none") {
             )) %E>%
         left_join(
             edges_in_graph_indexed |> 
-                mutate(edge_highlight = 2)
+                mutate(edge_highlight = 2),
+            by = c("from", "to")
         ) |> 
         mutate(edge_highlight = replace_na(edge_highlight, 1)) |> 
         create_layout("sugiyama")
@@ -1502,8 +1063,10 @@ plot_highlighted_fine_graph <- function(model = 1, LEGEND_POSITION = "none") {
         geom_node_point(aes(colour = node_type,
                             size = node_w,
                             alpha = node_highlight)) +
-        scale_size(name = "point-size", range = c(2,5)) +
-        scale_color_okabe_ito(order = c(9, 7,1, 2,3, 6, 8,5, 4)) +
+        scale_size(name = "point-size", range = c(2,3)) +
+        # scale_color_okabe_ito(order = c(9, 7,1, 2,3, 6, 8,5, 4)) +
+        scale_color_discrete(palette = nt_pal,
+                             drop = FALSE) +
         # scale_color_npg() +
         theme_graph() +
         scale_edge_alpha_continuous(range = c(0.08,0.8)) +
@@ -1516,22 +1079,17 @@ plot_highlighted_fine_graph <- function(model = 1, LEGEND_POSITION = "none") {
         theme(legend.title = element_blank())
 }
 
-plot_highlighted_fine_graph(4)
-# +
-#     xlim(x_limits_fine) +
-#     ylim(y_limits_fine)
-
 merged_cluster_graph_ng_no_post_nodes <- 
     merged_all_graph |> 
     activate(nodes) |> 
     filter(!str_detect(name, "Post")) |> 
     gcm_cluster_graph(code_node_group) |> 
-    activate(nodes) |> 
-    mutate(node_type = code_node_type(name))
+    clean_node_group_cluster_graph() |> 
+    mutate(node_group = name)
 
 
 plot_highlighted_coarse_graph <- function(model = 1, LEGEND_POSITION = "none",
-                                          repel_labels = FALSE) {
+                                          repel_labels = TRUE) {
     merged_coarse_models <- 
         merged_cluster_graph_ng_no_post_nodes
     
@@ -1549,8 +1107,14 @@ plot_highlighted_coarse_graph <- function(model = 1, LEGEND_POSITION = "none",
     edges_in_graph_indexed <- 
         edges_in_coarse_graph |> 
         mutate(
-            from = match(from, merged_coarse_models %N>% as_tibble() |> pull(name)),
-            to = match(to, merged_coarse_models %N>% as_tibble() |> pull(name))
+            from = match(from, 
+                         merged_coarse_models %N>% 
+                             as_tibble() |> 
+                             pull(name)),
+            to = match(to, 
+                       merged_coarse_models %N>% 
+                           as_tibble() |> 
+                           pull(name))
         )
     
     edge_integers <- 
@@ -1563,9 +1127,6 @@ plot_highlighted_coarse_graph <- function(model = 1, LEGEND_POSITION = "none",
         distinct(node_group, node_type) 
     
     g_highlight <- merged_coarse_models %N>%
-        select(-node_group) |>
-        mutate(nice_name = str_remove(nice_name, ";.*")) |> 
-        mutate(node_type = str_remove(node_type, ";.*")) |> 
         mutate(
             node_highlight = if_else(
                 name %in% node_groups_in_graph, 2, 1
@@ -1587,8 +1148,9 @@ plot_highlighted_coarse_graph <- function(model = 1, LEGEND_POSITION = "none",
             end_cap = circle(3, 'mm')) +
         geom_node_label(
             aes(label = nice_name, 
-                color = node_type,
-                size = node_w),
+                color = node_type
+                ,size = node_w
+                ),
             alpha = 0.7,
             data = g_highlight |> 
                 filter(node_highlight == 2),
@@ -1597,9 +1159,11 @@ plot_highlighted_coarse_graph <- function(model = 1, LEGEND_POSITION = "none",
         geom_node_point(aes(colour = node_type,
                             size = node_w,
                             alpha = node_highlight)) +
-        scale_size(name = "point-size", range = c(2,5)) +
+        scale_size(name = "point-size", range = c(2,3)) +
         # scale_color_npg() +
-        scale_color_okabe_ito(order = c(9, 7,1, 2,3, 6, 8,5, 4)) +
+        scale_color_discrete(
+            palette = nt_pal,
+            drop = FALSE) +
         theme_graph() +
         scale_edge_alpha_continuous(range = c(0.08,0.8)) +
         scale_alpha_continuous(range = c(0.1,1.0)) +
@@ -1611,19 +1175,27 @@ plot_highlighted_coarse_graph <- function(model = 1, LEGEND_POSITION = "none",
                color = guide_legend(ncol = 1)) +
         theme(legend.title = element_blank())
 }
+```
 
+### Figure: Highlighted graphs on merged background
+
+``` {r}
 # Model used in paper
-p_merged_highlighted_fine <- plot_highlighted_fine_graph(5, LEGEND_POSITION = "right")
-p_merged_highlighted_coarse <- plot_highlighted_coarse_graph(5, LEGEND_POSITION = "right")
-p_merged_highlighted_fine + ggtitle("Model used in paper (5)")
-p_merged_highlighted_coarse 
-ggsave(plot = p_merged_highlighted_fine, 
-       filename = "figures/FIG--merged-fine-with-1-highlighted.jpg",
-       width = 8, height = 5, dpi = 600)
-
-ggsave(plot = p_merged_highlighted_coarse, 
-       filename = "figures/FIG--merged-coarse-with-1-highlighted.jpg",
-       width = 8, height = 5, dpi = 600)
+md_for_paper <- 5
+p_merged_highlighted_fine <- plot_highlighted_fine_graph(
+    md_for_paper, 
+                                                         LEGEND_POSITION = "right")
+p_merged_highlighted_coarse <- plot_highlighted_coarse_graph(
+    md_for_paper, LEGEND_POSITION = "right")
+p_merged_highlighted_fine + ggtitle(str_c("Model  ",md_for_paper , ", original"))
+p_merged_highlighted_coarse + ggtitle(str_c("Model  ",md_for_paper , ", coarsened")) 
+# ggsave(plot = p_merged_highlighted_fine, 
+#        filename = "figures/FIG--merged-fine-with-1-highlighted.jpg",
+#        width = 8, height = 5, dpi = 600)
+# 
+# ggsave(plot = p_merged_highlighted_coarse, 
+#        filename = "figures/FIG--merged-coarse-with-1-highlighted.jpg",
+#        width = 8, height = 5, dpi = 600)
 ```
 
 ``` {r}
@@ -1671,7 +1243,7 @@ p_coarse_show_and_save(8)
 
 
 
-### Visualising coarsened graphs
+## Visualising coarsened graphs
 
 
 Note the appearance of feedback loops - these are between S.Cp and S.Kn, but also S.Cp and H.AI.evil. These metacognitive skills are clearly seen as important feedback processes in this system.
@@ -1680,7 +1252,7 @@ Note the appearance of feedback loops - these are between S.Cp and S.Kn, but als
 pCoarseMerged + geom_node_text(aes(label = name, size = node_w, alpha = node_w), nudge_x = 1)
 ```
 
-``` {r}
+``` {r fig.height = 7}
 plots_coarsend_ng <- 
     imap(
         tdags,
@@ -1688,13 +1260,13 @@ plots_coarsend_ng <-
         g_plot_coarse(gcm_cluster_graph(g, code_node_group))
     ) 
 
-pAllcoarse <- (plots_coarsend_ng$M1 | plots_coarsend_ng$M2 | plots_coarsend_ng$M3 | plots_coarsend_ng$M4) / (plots_coarsend_ng$M5 | plots_coarsend_ng$M6 | plots_coarsend_ng$M7 | plots_coarsend_ng$M8)
+pAllcoarse <- (plots_coarsend_ng$M1 | plots_coarsend_ng$M2) / (plots_coarsend_ng$M3 | plots_coarsend_ng$M4) / (plots_coarsend_ng$M5 | plots_coarsend_ng$M6) / ( plots_coarsend_ng$M7 | plots_coarsend_ng$M8)
 # ggsave("dags_all_course.svg", pAllcourse, width = 18, height = 9)
 
 pAllcoarse
 ```
 
-#### Figure: Consensus DAG
+### Figure: Consensus DAG
 
 Most common node group patterns - nodes in at least half the models, then looking at the resulting graph of node-groups.
 
@@ -1765,7 +1337,7 @@ p_top_node_groups_full <- ggraph(lyt_coarse_filtered_ng_full) +
                   start_cap = circle(3, 'mm'),
                   end_cap = circle(3, 'mm')) +
     geom_node_point(aes(colour = node_type, size = node_w)) +
-    scale_color_okabe_ito(order = c(9, 7,1, 2,3, 6, 8,5, 4), drop = FALSE) +
+    scale_color_discrete(palette = nt_pal, drop = FALSE) +
         # ggsci::scale_color_npg(drop = FALSE) +
         # geom_node_text(aes(label = name, size = node_w, alpha = node_w), nudge_y = -.5) +
         theme_graph() +
@@ -1774,7 +1346,9 @@ p_top_node_groups_full <- ggraph(lyt_coarse_filtered_ng_full) +
         theme(legend.position = "none") +
     scale_size(range = c(3,6)) +
     geom_node_text(aes(label = nice_name, colour = node_type), 
-                   alpha = 0.9, nudge_y = -.13, repel = F) +
+                   alpha = 0.9, 
+                   nudge_y = -.3,
+                   repel = F) +
     xlim(c(
         min(lyt_coarse_filtered_ng_full$x) - 0.15, 
         max(lyt_coarse_filtered_ng_full$x) + 0.15))
@@ -1822,7 +1396,7 @@ p_top_node_groups_filtered <- ggraph(lyt_coarse_filtered_ng_filtered) +
         theme(legend.position = "none") +
     scale_size(range = c(3,6)) +
     geom_node_text(aes(label = nice_name, colour = node_type), 
-                   alpha = 0.9, nudge_y = -.13, repel = F) +
+                   alpha = 0.9, nudge_y = -.3, repel = F) +
     xlim(c(min(lyt_coarse_filtered_ng_filtered$x) - 0.15, max(lyt_coarse_filtered_ng_filtered$x) + 0.15))
 
 p_top_node_groups_filtered
@@ -1834,10 +1408,6 @@ ggsave("figures/FIG--consensus-sub-model-filtered.jpg",
 ```
 
 
-Node groups close to the constructs:
-- Belonging
-- Mindset
-- Collaboration
 
 ``` {r}
 # all nodes
@@ -1972,8 +1542,12 @@ p_top_node_pagerank_no_outcome_measurability_discrete <-
             measurability_metric < 0.5 ~ "Potentially observable",
             measurability_metric < (5/6) ~ "Observable",
             TRUE ~ "Data warehouse") |> 
-            factor(levels = c("Latent", "Potentially observable", "Observable", "Data warehouse"))
-    ) |> 
+            factor(levels = c(
+                "Latent", 
+                "Potentially observable", 
+                "Observable", 
+                "Data warehouse"
+                ))) |> 
     arrange(Model, node_group) |>
     ggplot(aes(x = pagerank_no_outcome, y = node_group)) +
     geom_boxplot(aes(fill = m_group), colour = "lightgray", size = 0.4, alpha = 0.7) +
@@ -2109,6 +1683,408 @@ node_types_table <-
     select(-nt)
 
 node_types_table
+```
+
+
+# Causal consistency between models
+
+## Informal consistency: Edge coherence
+
+How often do causal paths point in the same direction? To examine this across all models we must look at relationships between 
+
+``` {r}
+n_possible_edges <- nrow(all_possible_edges)
+n_edges <- nrow(all_edges_in_models_with_metrics)
+
+prob_universal_inclusion_given_existence <- 
+    mean(all_edges_in_models_with_metrics$p_direct == 1)
+
+prob_universal_descendant_inclusion_given_existence <- 
+    mean(all_edges_in_models_with_metrics$p_descendant == 1)
+
+prob_universal_descendant_inclusion_given_descendant_existance <- 
+    all_edges_sum |> 
+    filter(p_descendant > 0) |> 
+    mutate(universal_descendant = p_descendant == 1) |> 
+    pull(universal_descendant) |> 
+    mean()
+    
+```
+
+We examine the `r n_edges` edges from `r n_possible_edges` possible edges across the 8 models, and in addition include the ancestor - descendant pairs. From this we define a few events:
+
+- $E_{ij}\in M$ for and edge belonging to a model
+- $E_{ij} \in \mathcal{M}$
+
+- $P(E_{ij} \in M_k|i,j\in V(M_k), E_{ij} \in \mathcal{E})$ - the probability of universal inclusion of an edge in all models it could be included in, given it appears in at least one model. This is `r prob_universal_inclusion_given_existence`
+- $P(De_{ij} \in M_k|i,j\in V(M_k), E_{ij} \in \mathcal{E})$ - the probability of universal inclusion of a descendant in all models it could be included in, given the edge appears in at least one model. This is `r prob_universal_descendant_inclusion_given_existence`. Could maybe use the squiggle notation here of mediated path?
+
+
+## Causal $\mathcal{L}-consistancy$
+
+THIS BIT NEEDS TO BE RE-WRITTEN FOR THE NEW CODE
+
+L1 (association) and L2 (intervention / do) levels on the causal hierarchy can be examined at a graph level through:
+
+- $\mathcal{L}_1$ Examining all conditional probability implications. If these are preserved between graphs then the two graphs are $\mathcal{L}_1$-consistent. ? An equivalent may be having similar / same CPDAGs - complete partial DAGs - which are the Markov equivalent class of DAGs. These induce the same conditional independencies (Thm 1.2.4 in Pearl 2009). These are the skeleton + all v-structures (colliders) arrowed in.
+- $\mathcal{L}_2$ Examining all 'do' operator implications. If these are preserved between graphs then the two graphs are $\mathcal{L}_2$-consistent. Or - use the Structural Intervention Distance (Peters & Buhlmann, 2015)
+- $\mathcal{L}_3$ Is not explored - this would probably require a SCM, not just the DAG.
+
+## Causal Consistency when Clustering
+
+### L1 consistency when clustering
+
+This computes two metrics, the loss ratio of conditional independence relationships (ci_loss) and the rate of introduction of spurious ancestors when coarsening. CI loss indicates how often a conditional independence relationship in the fine graph did not have its analogue in the coarsened graph. Spurious ancestors indicates the rate at which merged nodes introduced new ancestors in the cluster DAG - violating L1 consistency (CITE - Annan???)
+
+``` {r L1-consistency-of-clustering}
+clustering_L1_consistency <- 
+    tdags |> 
+    imap(
+        \(g, m)
+        gcm_cluster_L1_consistency(
+            g, code_node_group)$clustering_L1_consistency
+    ) |> 
+    list_rbind(names_to = "Model")
+```
+
+``` {r}
+clustering_L1_consistency |> 
+    knitr::kable(
+        caption = "L1-consistency metrics when coarsening GCMs",
+        digits = 4)
+```
+
+### L2 consistency when clustering
+
+This computes a single error metric - the % of lost identifiable pairs when coarsening. So this is where the $P(Y|do(X))$ is identifiable in the fine graph but $P(\varphi(Y)|do(\varphi(X)))$ is not identifiable in the coarsened cluster graph. 
+
+``` {r L2-consistency-of-clustering}
+clustering_L2_consistency <- 
+    tdags |> 
+    imap(
+        \(g,m)
+        gcm_cluster_L2_consistency(g, code_node_group)) |> 
+    list_rbind(names_to = "Model")
+```
+
+``` {r}
+clustering_L2_consistency |> 
+    knitr::kable(
+        caption = "L2-consistency metrics when coarsening GCMs",
+        digits = 4)
+```
+
+## Causal consistency between models
+
+#### Computing L1, L2 distances between models
+
+``` {r dist-matrix-helper-funcion}
+compute_dist_matrix <- function(
+        model_list, # list of models
+        .df, # function that computes distance between two models
+        symmetric = FALSE,
+        impute_undefined = FALSE) {
+    n  <- length(model_list)
+    nm <- names(model_list) 
+    D <- matrix(0, n, n, dimnames = list(nm, nm))
+    
+    if (symmetric) {
+        # fill upper triangle, mirror, zero diagonal
+        for (i in seq_len(n - 1)) {
+            for (j in (i + 1):n) {
+                d <- .df(model_list[[i]], model_list[[j]])
+                D[i, j] <- d
+                D[j, i] <- d
+            }
+        }
+        Dsym <- D
+    } else {
+        for (i in seq_len(n)) {
+            for (j in seq_len(n)) {
+                if (i != j) {
+                    D[i, j] <- .df(
+                        model_list[[i]], 
+                        model_list[[j]])
+                }
+            }
+        }
+        Dsym <- (D + t(D)) / 2
+    }
+    
+    if (impute_undefined) {
+        # First fill Dsym on mirror
+        fill <- is.nan(Dsym) & !is.nan(t(Dsym)) 
+        Dsym[fill] <- t(Dsym)[fill]
+        if (any(is.nan(D))) {
+            message("Imputing missing values")
+            fit <- softImpute::softImpute(D, rank.max = 4, lambda = 0)
+        D <- complete(D, fit)
+        }
+        if (any(is.nan()))
+        fitSym <- softImpute::softImpute(Dsym, rank.max = 4, lambda = 0)
+        Dsym <- complete(Dsym, fit)
+    } 
+    
+    return(list(D = D, Dsym = Dsym))
+}
+
+```
+
+#### A note on clustering methods
+
+A note on clustering: Some methods of `hclust` have underlying geometric assumptions (assume distances are Euclidean, which they are not), and these are `ward.D`, `ward.D2`, `centroid` (UPGMC) and `median` (WPGMC). Of the remainder `average` and `complete` are the best candidates. There is another challenge when using these - the distance matrix must be symmetric and in the case of the L2 distances it is not. So a decision also needs to be made about how to do this along with the algorithm for the hierarchical clustering. 
+
+- `average` (UPGMA) clustering method uses the mean pairwise distance between clusters, and the default for a non-Euclidean distance matrix. It is common when using Jaccard / dissimilarity. This works naturally with a matrix symmetrisation process of taking the average of the cross diagonals.  
+- `complete` is a stronger method that looks for clusters where every pair within it is consistant, no exceptions. This is a better 'worst case' scenario, and works more naturally with taking the maximum value of the cross-diagonals when forcing the distance matrix to be symmetric. 
+
+As such two methods of visualising the between model distances are used: **average** and **worst-case**.
+
+``` {r between-distances-plotting}
+library(ggdendro)
+
+fmt_lab <- function(x) {
+    # split leading letters from trailing digits: "M1" -> "M", "1"
+    highlight_col = rgb(87, 180, 66, maxColorValue = 255) # mygum
+    # letter <- sub("([A-Za-z]+).*", "\\1", x)
+    # num    <- sub("[A-Za-z]+", "", x)
+    # ifelse(
+    #     startsWith(x, "D"),
+    #     sprintf("<span style='background-color:%s'>%s<sub>%s</sub></span>", highlight_col, letter, num),
+    #     sprintf("%s<sub>%s</sub>", letter, num)   # non-M: subscript only, no highlight
+    # )
+    return(x)
+        # str_c(
+        #     str_extract(x, "^.{1}"),
+        #     "<sub>",
+        #     str_extract(x, ".{1}$"),
+        #     "</sub>"
+        # )
+}
+
+plotting_Ln_between_distances <- function(
+        D, level_label = "L", leg_pos = "none",
+        clustering_worst_case = FALSE
+        ) {
+    nm <- D |> colnames()
+    
+    if (clustering_worst_case) {
+        D_sym <- pmax(D, t(D))
+        hc  <- hclust(as.dist(D_sym), method = "complete")
+    } else {
+        D_sym <- (D + t(D)) / 2
+        hc  <- hclust(as.dist(D_sym), method = "average")
+    } 
+    
+    ord <- hc$order
+    lev <- nm[ord]  
+
+    # --- dendrogram panel ---
+    dend <- dendro_data(hc)
+    
+    p_dend <- ggplot() +
+    geom_segment(
+        data = segment(dend),
+        aes(x = x, y = y, xend = xend, yend = yend),
+        linewidth = 0.4, colour = "grey30"
+    ) +
+    scale_x_continuous(
+        breaks = seq_along(lev),
+        labels = lev,
+        limits = c(0.5, length(lev) + 0.5),
+        expand = expansion(add = 0),
+        name = "Model"
+    ) +
+    scale_y_continuous(
+        expand = expansion(mult = c(0, 0.02))
+    ) +
+    theme_minimal() +
+    coord_flip() +
+    theme(
+        axis.title  = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks  = element_blank(),
+        panel.grid  = element_blank()
+    )
+    
+    D_long <- as_tibble(D_sym, rownames = "from") |>
+        pivot_longer(-from, names_to = "to", values_to = "dist") |>
+        mutate(
+            from = factor(from, levels = lev),
+            to   = factor(to,   levels = lev)
+        )
+    
+    p_heat <- ggplot(D_long, aes(to, from, fill = dist)) +
+        geom_tile(colour = "white", linewidth = 0.5) +
+        geom_text(
+            aes(label = round(dist, 2)), 
+            size = 3, colour = "grey15") +
+        scale_fill_viridis_c(
+            name = str_c(level_label, "-consistency\ndiscrepency"), 
+            direction = -1) +
+        scale_x_discrete(position = "top", labels = fmt_lab) +
+        labs(x = NULL, y = NULL) +
+        coord_fixed() +
+        theme_minimal(base_size = 12) +
+        theme(
+            # axis.text.x = element_text(angle = 45, hjust = 0),
+            panel.grid  = element_blank(),
+            legend.position = leg_pos
+        )
+    
+    # combined 
+    combined <- p_heat + p_dend
+
+    return(list(
+        heatmap = p_heat,
+        dendrogram = p_dend,
+        combined.plot = combined,
+        hclust = hc
+    ))
+
+}
+```
+
+### L1 consistency between models
+
+``` {r}
+# scalar L1 distance between two models
+L1_dist <- function(m_i, m_j) {
+  fuzzyL1 <- gcm_fuzzy_L1_consistency(
+      gX = m_i, gY = m_j)
+  fuzzyL1$distance
+}
+
+L1_between_model_metrics <- 
+    compute_dist_matrix(tcdags_node_group, L1_dist, symmetric = TRUE)
+
+plots_L1_similarities <- plotting_Ln_between_distances(
+    L1_between_model_metrics$D, level_label = "Average\nL1", leg_pos = "left")
+plots_L1_similarities_worst_case <- plotting_Ln_between_distances(
+    L1_between_model_metrics$D, level_label = "Maximal\nL1", clustering_worst_case = TRUE,leg_pos = "left")
+
+```
+
+``` {r}
+plots_L1_similarities$combined.plot
+```
+
+``` {r}
+plots_L1_similarities_worst_case$combined.plot
+```
+
+### L2 consistency between models
+
+``` {r}
+# L2 distance between two models
+L2_dist <- function(m_i, m_j) {
+  fuzzyL2 <- gcm_fuzzy_L2_consistency(
+      gX = m_i, gY = m_j)
+  return(fuzzyL2$dXY)
+}
+
+L2_between_model_metrics <- 
+    compute_dist_matrix(
+        tcdags_node_group, L2_dist, symmetric = FALSE)
+
+```
+
+``` {r}
+plots_L2_similarities <- plotting_Ln_between_distances(
+    L2_between_model_metrics$D, 
+    level_label = "Average\nL2",
+    leg_pos = "left"
+)
+plots_L2_similarities_worst_case <- plotting_Ln_between_distances(
+    L2_between_model_metrics$D, 
+    clustering_worst_case = TRUE,
+    level_label = "Maximal\nL2",
+    leg_pos = "left"
+)
+```
+
+``` {r}
+plots_L2_similarities$combined.plot
+```
+
+
+``` {r}
+plots_L2_similarities_worst_case$combined.plot
+```
+
+
+#### Combined L1, L2 between models
+
+``` {r}
+plots_L12_similarities_avg_maximal <- 
+    plotting_Ln_between_distances(
+        (L1_between_model_metrics$D + L2_between_model_metrics$D) / 2,
+        clustering_worst_case = TRUE,
+        level_label = "Maximal\nL",
+        leg_pos = "none"
+    )
+```
+
+``` {r}
+plots_L12_similarities_avg_maximal$combined.plot
+```
+
+#### Clusters of cluster DAGs
+
+It seems that models M1, M2 (and maybe M4) are close to each other (GC1), as well as M3, M6 and M7 (GC2) and M5 and M8 (GC3).
+
+``` {r}
+# thought - merge on latent projection of shared nodes only?
+ng_counts <- 
+    all_node_groups_aggregated_metrics |> 
+    count(node_group)
+
+gcm_latent_projection_merge <- function(model_list, shared_nodes = NULL) {
+    # merges the latent projection of a list of models
+    # each model is projected onto the shared set of nodes, 
+    # with the other nodes being treated as latent
+    if (is.null(shared_nodes)) {
+        shared_nodes <- 
+            model_list |> 
+            map(
+                \(m)
+                gcm_nodelist(m) |> 
+                    pull(name) 
+            ) |> 
+            reduce(intersect)
+    }
+    
+    merged_projections <- 
+        model_list |> 
+        map(
+            \(m)
+            gcm_latent_projection(m, latent_nodes = 
+                                      setdiff(gcm_nodelist(m) |> pull(name),
+                                              shared_nodes)) |> 
+                activate(edges) |> 
+                mutate(edge_w = replace_na(edge_w, 1)) |> 
+                activate(nodes)
+        ) |> 
+        reduce(gcm_merge)
+    
+    return(merged_projections)
+}
+
+tcdags_node_group |> 
+    gcm_latent_projection_merge(
+        shared_nodes = ng_counts |> 
+            filter(n > 3) |> 
+            pull(node_group)) |>
+    activate(edges) |> 
+    filter(edge_w > 2) |> 
+    g_plot_coarse()
+
+cdagGC1 <- tcdags_node_group[c(1,2,4)] |> gcm_latent_projection_merge()
+cdagGC2 <- tcdags_node_group[c(3,7,6)] |> gcm_latent_projection_merge()
+cdagGC3 <- tcdags_node_group[c(5,8)] |> gcm_latent_projection_merge()
+
+g_plot_coarse(cdagGC1)
+# g_plot_coarse(cdagGC2) |> activate(edges) |> filter(edge_w > 0)
+# g_plot_coarse(cdagGC3) |> activate(edges) |> filter(edge_w > 1))
 ```
 
 
@@ -2462,14 +2438,24 @@ causal_estimate_over_all_adj_sets <- function(
                                  str_c(adj_set, collapse = " + "))
         }
         fit <- lm(as.formula(formula_str), data = data)
-        preds <- predict(fit,
+        # This was the old preds
+        y1_1 <- predict(fit,
                      newdata = data |>
                          mutate({{ exposure }} := intervention_val),
                      se.fit = TRUE)
-    
+        y1_0 <- predict(fit,
+                     newdata = data |>
+                         mutate({{ exposure }} := 0),
+                     se.fit = TRUE)
+        preds.fit <- y1_1$fit - y1_0$fit
+        se1 <- sqrt(mean(y1_1$se.fit^2))
+        se0 <- sqrt(mean(y1_0$se.fit^2))
+        se <- max(se1, se0)
+        
     list(
-        mean = mean(preds$fit),
-        se   = sqrt(mean(preds$se.fit^2))
+        mean = mean(preds.fit),
+        se   = se,
+        y_eff = preds.fit
     )
     }
     )
@@ -2723,6 +2709,10 @@ all_ng_estimates <-
     select(Model, DAG, estimate_mean, error, gt_est_diff, everything())
 ```
 
+## Simulation comparisons
+
+Between Ground Truth, Expert DAGs, and Learned DAGs from observable data. 
+
 ``` {r plotting-cluster-model-simulation-results}
 dodge_amt <- 0.1
 
@@ -2955,15 +2945,11 @@ lcdags <-
 all.cluster.dags <- 
     c(tcdags_node_group, lcdags)
 
-# Error here - only using 8 models on D - something wrong in algorithm
 L1_between_model_and_simulation_metrics <- 
     compute_dist_matrix(all.cluster.dags, L1_dist, symmetric = TRUE)
 
-# Filling in errors with max distance
-# L1_between_model_and_simulation_metrics$D[is.nan(L1_between_model_and_simulation_metrics$D)] <- 1
-
 plots_L1_similarities_full <- plotting_Ln_between_distances(
-    L1_between_model_and_simulation_metrics$D, Level = "L1")
+    L1_between_model_and_simulation_metrics$D, level_label = "L1")
 
 ```
 
@@ -2981,17 +2967,17 @@ plots_L1_similarities_full$p_combined
 # L2 distance between two models
 
 
-L2_between_model_metrics_full$D <- 
-    compute_dist_matrix(all.cluster.dags, L2_dist, symmetric = FALSE)
-L2_between_model_metrics_full$D[is.nan(L2_between_model_metrics_full$D)] <- 1
-L2_between_model_metrics_full$Dsym[is.nan(L2_between_model_metrics_full$Dsym)] <- 1
+L2_between_model_metrics_full <- 
+    compute_dist_matrix(
+        all.cluster.dags, 
+        L2_dist, 
+        symmetric = FALSE)
 ```
 
 ``` {r}
 plots_L2_similarities_full <- plotting_Ln_between_distances(
     L2_between_model_metrics_full$D, 
-    L2_between_model_metrics_full$Dsym,
-    Level = "L2"
+    level_label = "L2"
 )
 
 plots_L2_similarities_full$p_combined
@@ -3003,10 +2989,14 @@ plots_L2_similarities_full$p_combined
 library(ggtext)
 plots_L12_mean_consistency_all <- 
     plotting_Ln_between_distances(
-        (L1_between_model_and_simulation_metrics$D + L2_between_model_metrics_full$Dsym) / 2,
-        Level = "L1-2"
+        (L1_between_model_and_simulation_metrics$D + L2_between_model_metrics_full$D) / 2,
+        level_label = "L1-2"
     )
 
 
-plots_L12_mean_consistency_all$p_denro
+plots_L12_mean_consistency_all$p_combined
 ```
+
+### L2 consistency between models??
+
+Could base on the Jenson-Shannon distance between distributions - https://arxiv.org/pdf/2305.04357 - see definition 4. 
