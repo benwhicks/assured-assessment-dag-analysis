@@ -289,6 +289,7 @@ This process involved iterating between:
 
 1. Examining the transcript, the node description (label in the diagram), and forming an initial classification of the node. A natural place for a node-group to form was where in one model a node was broken into sub-components, where in others it was kept whole. `Student knowledge` was a key example of this, where several models split this into finer grained nodes, where others did not. 
 2. After this the graph coarsening according to the map $\varphi(V_i)=\mathrm{nodegroup}(V_i)$, calculating the $\mathcal{L}_1$ and $\mathcal{L}_2$ cost of clustering the nodes into their node groups. From this two operations were performed on the cluster graph: (a) identifying which node clusters had contributed most to the degradation of the causal consistency, and (b) parts of the cluster graph that could potentially be coarsened further. 
+3. Nodes and node groups were then then re-evaluated, based on which clusters of nodes caused the most degradation of causal consistency when coarsening the graphs. Often this amounted to reasonable re-interpretations of the transcript and the graph, such as distinguishing between aspects of student knowledge that were present prior to the period of study, and those aspects of student knowledge that were changing during the study. Step 2 was then repeated and the re-evaluation continued. 
 
 ``` {r node-group}
 code_node_group <- function(v) {
@@ -1690,14 +1691,23 @@ node_types_table
 
 ## Informal consistency: Edge coherence
 
-How often do causal paths point in the same direction? To examine this across all models we must look at relationships between 
+How often do causal paths point in the same direction?  
+
+> Note on Model 8. This is a structurally different system, in which any misuse of AI effects are deliberately mediated through the task design. This is a case where the causal structure *should* be different to the others - we are describing a different system due to deliberate design choices. 
 
 ``` {r}
+# Nodes in fine graph
 n_possible_edges <- nrow(all_possible_edges)
 n_edges <- nrow(all_edges_in_models_with_metrics)
 
+prob_edge_inclusion_given_existence <- 
+    mean(all_edges_in_models_with_metrics$p_direct)
+
 prob_universal_inclusion_given_existence <- 
     mean(all_edges_in_models_with_metrics$p_direct == 1)
+
+prob_descendant_inclusion_given_existence <- 
+    mean(all_edges_in_models_with_metrics$p_descendant)
 
 prob_universal_descendant_inclusion_given_existence <- 
     mean(all_edges_in_models_with_metrics$p_descendant == 1)
@@ -1708,19 +1718,177 @@ prob_universal_descendant_inclusion_given_descendant_existance <-
     mutate(universal_descendant = p_descendant == 1) |> 
     pull(universal_descendant) |> 
     mean()
-    
+```
+
+``` {r eval = FALSE}
+# Checking the above, using the method implemented with the cluster graphs - checks out!
+
+all_nodes_fine_graphs <- 
+    tdags |> 
+    imap(
+        \(g, m)
+        gcm_nodelist(g)
+    ) |> 
+    list_rbind(names_to = "Model")
+
+all_possible_edges_fine_graphs <- 
+    tdags |> 
+    imap(
+        \(g, m)
+        gcm_possible_edges(g)
+    ) |> 
+    list_rbind(names_to = "Model") |> 
+    filter(from != to)
+
+all_edges_fine_graphs <- 
+    tdags |> 
+    imap(
+        \(g, m)
+        gcm_edgelist(g)
+    ) |> 
+    list_rbind(names_to = "Model")
+
+all_descendants_fine_graphs <- 
+    tdags |> 
+    imap(
+        \(g, m)
+        gcm_all_descendants_edge_list(g)
+    ) |> 
+    list_rbind(names_to = "Model")
+
+all_edges_summary_fine_graphs <- 
+    all_possible_edges_fine_graphs |> 
+    left_join(
+        all_edges_fine_graphs |> 
+            mutate(is_edge = TRUE),
+        by = c("Model", "from", "to")) |> 
+    mutate(is_edge = replace_na(is_edge, FALSE)) |> 
+    left_join(
+        all_descendants_fine_graphs |> 
+            mutate(is_descendant = TRUE),
+        by = c("Model", "from", "to")) |> 
+    mutate(is_descendant = replace_na(is_descendant, FALSE)) |> 
+    group_by(from, to) |> 
+    summarise(
+        n_possible = n_distinct(Model),
+        n_edge = sum(is_edge),
+        n_descendant = sum(is_descendant),
+        .groups = "drop"
+    )
+
+n_possible_edges_fine <- nrow(all_possible_edges_fine_graphs)
+n_edges_fine <- nrow(all_edges_fine_graphs)
+
+prob_edge_inclusion_given_existence_fine_graphs <- 
+    all_edges_summary_fine_graphs |> 
+    filter(n_edge > 0) |> 
+    mutate(p_inc = n_edge / n_possible) |> 
+    pull(p_inc) |> 
+    mean()
+
+prob_descendant_inclusion_given_existence_fine_graphs <- 
+    all_edges_summary_fine_graphs |> 
+    filter(n_edge > 0) |> 
+    mutate(p_inc = n_descendant / n_possible) |> 
+    pull(p_inc) |> 
+    mean()
+
+
+
 ```
 
 We examine the `r n_edges` edges from `r n_possible_edges` possible edges across the 8 models, and in addition include the ancestor - descendant pairs. From this we define a few events:
 
-- $E_{ij}\in M$ for and edge belonging to a model
-- $E_{ij} \in \mathcal{M}$
+- $E_{ij}\in G_k$ for and edge belonging to a model
+- $P(E_{ij} \in \mathbf{E}_{G_k} |V_i,V_j \in \mathbf{V}_{G_k} , E_{ij} \in \mathcal{E} )$ - the probability of inclusion of an edge in models it could be included in, given it appears in at least one model. This is `r prob_edge_inclusion_given_existence`
+- $P(E_{ij} \in \mathbf{E}_{G_k}  \forall  G_k |V_i,V_j \in \mathbf{V}_{G_k} , E_{ij} \in \mathcal{E} )$ - the probability of universal inclusion of an edge in all models it could be included in, given it appears in at least one model. This is `r prob_universal_inclusion_given_existence`
+- $P(V_j \in \mathrm{an}_{G_k}(V_i) | V_i,V_j \in \mathbf{V}_{G_k} , E_{ij} \in \mathcal{E} )$, or $P(V_i \rightsquigarrow_{G_k} V_j | V_i,V_j \in \mathbf{V}_{G_k} , E_{ij} \in \mathcal{E} )$ - the probability of universal inclusion of a descendant in all models it could be included in, given the edge appears in at least one model. This is `r prob_descendant_inclusion_given_existence`.
+- $P(V_j \in \mathrm{an}_{G_k}(V_i)  \forall  G_k | V_i,V_j \in \mathbf{V}_{G_k} , E_{ij} \in \mathcal{E} )$ - the probability of universal inclusion of a descendant in all models it could be included in, given the edge appears in at least one model. This is `r prob_universal_descendant_inclusion_given_existence`. Could maybe use the squiggle notation here of mediated path?
 
-- $P(E_{ij} \in M_k|i,j\in V(M_k), E_{ij} \in \mathcal{E})$ - the probability of universal inclusion of an edge in all models it could be included in, given it appears in at least one model. This is `r prob_universal_inclusion_given_existence`
-- $P(De_{ij} \in M_k|i,j\in V(M_k), E_{ij} \in \mathcal{E})$ - the probability of universal inclusion of a descendant in all models it could be included in, given the edge appears in at least one model. This is `r prob_universal_descendant_inclusion_given_existence`. Could maybe use the squiggle notation here of mediated path?
+We now perform the same analysis, but for the node-group cluster DAGs. It is worth noting that these numbers are *lower* due to the node clustering - it is much more likely that common nodes are found across graphs. 
 
 
-## Causal $\mathcal{L}-consistancy$
+``` {r}
+# Nodes in cluster graph
+all_nodes_cluster_graphs <- 
+    tcdags_node_group |> 
+    imap(
+        \(g, m)
+        gcm_nodelist(g)
+    ) |> 
+    list_rbind(names_to = "Model")
+
+all_possible_edges_cluster_graphs <- 
+    tcdags_node_group |> 
+    imap(
+        \(g, m)
+        gcm_possible_edges(g)
+    ) |> 
+    list_rbind(names_to = "Model") |> 
+    filter(from != to)
+
+all_edges_cluster_graphs <- 
+    tcdags_node_group |> 
+    imap(
+        \(g, m)
+        gcm_edgelist(g)
+    ) |> 
+    list_rbind(names_to = "Model")
+
+all_descendants_cluster_graphs <- 
+    tcdags_node_group |> 
+    imap(
+        \(g, m)
+        gcm_all_descendants_edge_list(g)
+    ) |> 
+    list_rbind(names_to = "Model")
+
+all_edges_summary_cluster_graphs <- 
+    all_possible_edges_cluster_graphs |> 
+    left_join(
+        all_edges_cluster_graphs |> 
+            mutate(is_edge = TRUE),
+        by = c("Model", "from", "to")) |> 
+    mutate(is_edge = replace_na(is_edge, FALSE)) |> 
+    left_join(
+        all_descendants_cluster_graphs |> 
+            mutate(is_descendant = TRUE),
+        by = c("Model", "from", "to")) |> 
+    mutate(is_descendant = replace_na(is_descendant, FALSE)) |> 
+    group_by(from, to) |> 
+    summarise(
+        n_possible = n_distinct(Model),
+        n_edge = sum(is_edge),
+        n_descendant = sum(is_descendant),
+        .groups = "drop"
+    )
+
+n_possible_edges_cluster <- nrow(all_possible_edges_cluster_graphs)
+n_edges_cluster <- nrow(all_edges_cluster_graphs)
+
+prob_edge_inclusion_given_existence_cluster_graphs <- 
+    all_edges_summary_cluster_graphs |> 
+    filter(n_edge > 0) |> 
+    mutate(p_inc = n_edge / n_possible) |> 
+    pull(p_inc) |> 
+    mean()
+
+prob_descendant_inclusion_given_existence_cluster_graphs <- 
+    all_edges_summary_cluster_graphs |> 
+    filter(n_edge > 0) |> 
+    mutate(p_inc = n_descendant / n_possible) |> 
+    pull(p_inc) |> 
+    mean()
+
+```
+
+
+- $E_{[i][j]}\in \mathbf{E}_{{G_k^C}}=\mathbf{E}_{\varphi G_{k}}$ for and edge belonging to a clluster model
+- $P(E_{[i][j]} \in \mathbf{E}_{\varphi G_k} |V_{[i]},V_{[j]} \in \mathbf{V}_{\varphi G_k} , E_{[i][j]} \in \mathcal{E}_\varphi )$ - the probability of inclusion of an edge in models it could be included in, given it appears in at least one model. This is `r prob_edge_inclusion_given_existence_cluster_graphs`
+- $P(V_{[j]} \in \mathrm{an}_{\varphi G_k}(V_{[i]}) | V_{[i]},V_{[j]} \in \mathbf{V}_{\varphi G_k} , E_{[i][j]} \in \mathcal{E}_{\varphi} )$, or $P(V_{[i]} \rightsquigarrow_{\varphi G_k} V_{[j]} | V_{[i]},V_{[j]} \in \mathbf{V}_{\varphi G_{k}} , E_{[i][j]} \in \mathcal{E}_{\varphi} )$ - the probability of universal inclusion of a descendant in all models it could be included in, given the edge appears in at least one model. This is `r prob_descendant_inclusion_given_existence`.
+
+
+## Causal $\mathcal{L}$-consistancy
 
 THIS BIT NEEDS TO BE RE-WRITTEN FOR THE NEW CODE
 
@@ -2219,11 +2387,11 @@ m_build_node_group_model_with_proxy_nodes <- function(
 
 
 simSEM <- partial(simulateSEM, eps = 1, standardized = F, N = 1000)
-simSEM <- partial(simulateLogistic, eps = 1, N = 1000)
+# simSEM <- partial(simulateLogistic, eps = 1, N = 1000)
 
 
 bn_fit_node_group_model_list <- function(
-        m_proxy_list, Beta = 0.6,
+        m_proxy_list, Beta = 0.4,
         blacklist = tibble(
             from = "Grade", 
             to = "S.Kn")) {
@@ -2256,16 +2424,27 @@ bn_fit_node_group_model_list <- function(
 }
 
 
+# bn_to_dagitty <- function(bn) {
+#   edges <- bnlearn::arcs(bn) |> 
+#     as_tibble() |> 
+#     mutate(edge_str = str_c(from, " -> ", to))
+#   
+#   dagitty(str_c(
+#     "dag{",
+#     str_c(edges$edge_str, collapse = "; "),
+#     "}"
+#   ))
+# }
+
 bn_to_dagitty <- function(bn) {
-  edges <- bnlearn::arcs(bn) |> 
-    as_tibble() |> 
-    mutate(edge_str = str_c(from, " -> ", to))
-  
-  dagitty(str_c(
-    "dag{",
-    str_c(edges$edge_str, collapse = "; "),
-    "}"
-  ))
+  edges <- bnlearn::arcs(bn) |> as_tibble()
+  all_nodes <- bnlearn::nodes(bn)
+  edge_str <- if (nrow(edges) > 0)
+      str_c(edges$from, " -> ", edges$to, collapse = "; ") else ""
+  dagitty(str_c("dag{ ",
+                str_c(all_nodes, collapse = "; "),
+                if (nchar(edge_str)) str_c("; ", edge_str) else "",
+                " }"))
 }
 
 # Thinking of a simple dag X -> Y, we have 
@@ -2295,7 +2474,7 @@ dagitty_to_bn <- function(dag) {
 causal_estimate_over_all_adj_sets <- function(
         dag, data, latent_nodes = NULL,
         exposure = "S.Kn", outcome = "Grade",
-        x1_val = 1, x0_val = -1) {
+        x1_val = 1, x0_val = 0) {
     # This estimates P(Grade|S.Kn, Adjustment Set) over all adjustment sets
     # This will give a range of that the model suggests is the true effect
     adj_sets <- adjustmentSets(dag, exposure = exposure, outcome = outcome,
@@ -2342,8 +2521,8 @@ causal_estimate_over_all_adj_sets <- function(
     list(
         y1_x0 = y1_x0,
         y1_x1 = y1_x1,
-        eff_mean = mean(preds.fit),
-        eff_se   = se
+        mean = mean(preds.fit),
+        se   = se
     )
     }
     )
@@ -2356,10 +2535,10 @@ causal_estimate_over_all_adj_sets <- function(
 
 generate_node_group_causal_estimate_comparisons <- function(
         Model = "M1",
-        Beta = 0.6, # strength of signal along paths
+        Beta = 0.4, # strength of signal along paths
         # might need to change for different models depending on present nodes
         exposure = "S.Kn", outcome = "Grade",
-        x1_val = 1, x0_val = -1, # should be 1 and 0 for continuous
+        x1_val = 1, x0_val = 0, # should be 1 and 0 for continuous
         # for placiing proxy nodes
         x_p_nudge = 0, y_p_nudge = -2
 ) {
@@ -2657,24 +2836,6 @@ est_to_plot_grouped |>
 
 
 ``` {r}
-plot_bnlearn_comparisons <- function(s_estimates) {
-    p_orig <- s_estimates$DAG |> 
-        dag_to_tidy_graph() %N>%
-        mutate(name = str_remove(name, "_p$")) |> 
-        g_plot_fine(weight_nodes = F)
-    p_dwo <- s_estimates$fitted_BN$bn.dwo |>
-        bn_to_dagitty() |> 
-        dag_to_tidy_graph() %N>%
-        mutate(name = str_remove(name, "_p$")) |> 
-        g_plot_fine(weight_nodes = F)
-    p_dwoop <- s_estimates$fitted_BN$bn.dwoop |> 
-        bn_to_dagitty() |> 
-        dag_to_tidy_graph() %N>%
-        mutate(name = str_remove(name, "_p$")) |> 
-        g_plot_fine(weight_nodes = F)
-    return(p_orig + p_dwo + p_dwoop)
-}
-
 plot_bnlearn_coarse_comparison <- function(s_estimates) {
     p_orig <- s_estimates$DAG |> 
         dag_to_tidy_graph() %N>%
@@ -2714,6 +2875,7 @@ plot_bnlearn_coarse_comparison(s_estimates = simulations_ng_cluster_models$M8) +
 
 ## Distances between the simulations and the originals
 
+
 ``` {r}
 lcdags <- 
     simulations_ng_cluster_models |> 
@@ -2736,20 +2898,25 @@ plots_L1_similarities_full <- plotting_Ln_between_distances(
 
 ```
 
+
+### Informal consistency
+
+Replicate the above, but between the ground truth and the learned DAG. 
+
+
+
 ### L1 consistency between models
 
 Includes the models, $M_k$ and their corresponding DAG learned from data, $D_k$
 
 ``` {r}
-plots_L1_similarities_full$p_combined
+plots_L1_similarities_full$combined.plot
 ```
 
 ### L2 consistency between models
 
 ``` {r}
 # L2 distance between two models
-
-
 L2_between_model_metrics_full <- 
     compute_dist_matrix(
         all.cluster.dags, 
@@ -2758,28 +2925,31 @@ L2_between_model_metrics_full <-
 ```
 
 ``` {r}
+imputed_L2 <- L2_between_model_metrics_full$D
+imputed_L2[is.nan(imputed_L2)] <- mean(imputed_L2[!is.nan(imputed_L2)])
 plots_L2_similarities_full <- plotting_Ln_between_distances(
-    L2_between_model_metrics_full$D, 
+    imputed_L2, 
     level_label = "L2"
 )
 
-plots_L2_similarities_full$p_combined
+plots_L2_similarities_full$combined.plot
 ```
 
 ### Averaged L1, L2 similarity between all models
 
 ``` {r}
-library(ggtext)
 plots_L12_mean_consistency_all <- 
     plotting_Ln_between_distances(
-        (L1_between_model_and_simulation_metrics$D + L2_between_model_metrics_full$D) / 2,
+        (L1_between_model_and_simulation_metrics$D + imputed_L2) / 2,
         level_label = "L1-2"
     )
 
 
-plots_L12_mean_consistency_all$p_combined
+plots_L12_mean_consistency_all$combined.plot
 ```
 
-### L2 consistency between models??
+``` {r scraps}
 
-Could base on the Jenson-Shannon distance between distributions - https://arxiv.org/pdf/2305.04357 - see definition 4. 
+### L2 consistency between models??
+# Could base on the Jenson-Shannon distance between distributions - https://arxiv.org/pdf/2305.04357 - see definition 4. 
+```
