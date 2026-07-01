@@ -2135,92 +2135,6 @@ Note we are working under a local assumption that each model is the 'ground trut
 # should add layout!!
 # use same x, y from main graph
 
-m_build_model_with_proxy_nodes <- function(
-        m = "M1", 
-        x_p_nudge = 0, y_p_nudge = -2,
-        S.Kn_to_Obs = TRUE) {
-    model <- m
-    if (S.Kn_to_Obs) { # for running sims
-        all_nodes_adj <- 
-            all_nodes_with_metrics |> 
-            mutate(measurability = if_else(
-                # just picking S.Kn.Tech for S7
-                name %in% c("S.Kn", "S.Kn.Tech"), "O",
-                measurability) |> 
-                    factor(
-                        levels = levels(
-                            all_nodes_with_metrics$measurability)
-                    )
-            )
-    } else {
-        all_nodes_adj <- all_nodes_with_metrics
-    }
-    nodes <- all_nodes_adj |>
-        inner_join(merged_all_graph_layout_adjusted |> 
-                       select(name, x, y),
-                   by = "name") |> 
-        filter(Model == toupper(m)) |> 
-        select(name, x, y, node_group, node_type, measurability) |> 
-        bind_rows( # adding proxy nodes for PO nodes
-            all_nodes_adj |> 
-                inner_join(merged_all_graph_layout_adjusted |> 
-                       select(name, x, y),
-                   by = "name") |> 
-                filter(Model == model, measurability == "PO") |> 
-                select(name, node_type, x, y) |> 
-                mutate(name = str_c(name, "_p"),
-                       # Need to place proxy nodes close - might cause issues
-                       x = x + x_p_nudge,
-                       y = y + y_p_nudge  
-                       ) |> 
-                mutate(node_group = "Proxy") |> 
-                mutate(measurability = "O") # the assumption for the proxy
-        ) |> 
-        mutate(measurability = factor(
-            measurability, 
-            levels = levels(all_nodes_with_metrics$measurability)))
-    
-    edges <- all_edges |> 
-        filter(Model == m) |> 
-        select(from, to) |> 
-        bind_rows(
-            tibble(
-                from = nodes |> 
-                    filter(measurability == "PO") |> 
-                    pull(name)) |> 
-                mutate(to = str_c(from, "_p"))
-        )
-    
-    new_tidydag <- tidygraph::tbl_graph(
-        nodes = nodes, edges = edges, directed = TRUE
-    )
-    new_dag <- dagitty_from_edge_df(edges)
-    
-    # setting coordinates of dagitty object - needs to be a named list
-    node_names <- nodes$name
-    node_coord_list <- list(x = nodes$x, y = nodes$y)
-    names(node_coord_list$x) <- node_names
-    names(node_coord_list$y) <- node_names
-    coordinates(new_dag) <- node_coord_list
-    
-    node_list_dw <- nodes |> filter(measurability == "DW") |> pull(name)
-    node_list_dwo <- nodes |> 
-        filter(!str_detect(name, "_p")) |> 
-        filter(measurability %in% c("DW", "O")) |> 
-        pull(name)
-    node_list_dwoop <- nodes |>  
-        filter(measurability %in% c("DW", "O")) |> 
-        pull(name)
-    
-    return(list(
-        dag = new_dag, # new dag in dagitty format
-        tdag = new_tidydag, # new dag as tidydag
-        node_list_dw = node_list_dw, # list of nodes in DW
-        node_list_dwo = node_list_dwo, # list of nodes in DW or Observable
-        node_list_dwoop = node_list_dwoop # list of all non-latent nodes
-        ))
-}
-
 m_build_node_group_model_with_proxy_nodes <- function(
         m = "M1", 
         x_p_nudge = 0, y_p_nudge = -2) {
@@ -2305,46 +2219,8 @@ m_build_node_group_model_with_proxy_nodes <- function(
 
 
 simSEM <- partial(simulateSEM, eps = 1, standardized = F, N = 1000)
+simSEM <- partial(simulateLogistic, eps = 1, N = 1000)
 
-# d.noisy <- simSEM(new_dag, b.default = sim_signal_strength[["noisy"]])
-# d.typical <- simSEM(new_dag, b.default = sim_signal_strength[["typical"]])
-# d.ideal <- simSEM(new_dag, b.default = sim_signal_strength[["ideal"]])
-
-bn_fit_model_list <- function(m_proxy_list, Beta = 0.6, 
-                              blacklist = tibble(from = "Grade", to = "S.Kn")) {
-    
-    # getting simulated data, and subsets
-    d.sim.sem <- simSEM(m_proxy_list$dag, b.default = Beta)
-    d.dw <- as.data.frame(d.sim.sem[,m_proxy_list$node_list_dw])
-    d.dwo <- as.data.frame(d.sim.sem[,m_proxy_list$node_list_dwo])
-    d.dwoop <- as.data.frame(d.sim.sem[,m_proxy_list$node_list_dwoop])
-    
-    # fitting BNets
-    bn.full =  bnlearn::bn.fit(bnlearn::hc(d.sim.sem,
-                                           blacklist = blacklist), d.sim.sem)
-    bn.dw =    bnlearn::bn.fit(bnlearn::hc(d.dw,
-                                           blacklist = blacklist), d.dw)
-    bn.dwo =   bnlearn::bn.fit(bnlearn::hc(d.dwo,
-                                           blacklist = blacklist), d.dwo)
-    bn.dwoop = bnlearn::bn.fit(bnlearn::hc(d.dwoop,
-                                           blacklist = blacklist), d.dwoop)
-    
-    return( # returns a named list of simmed data and models
-        list(
-            # The full data set
-            d.full   = d.sim.sem,
-            bn.full  = bn.full,
-            # Only nodes in the Data Warehouse (DW)
-            d.dw     = d.dw,
-            bn.dw    = bn.dw,
-            # DW and Observable (O) nodes
-            d.dwo    = d.dwo,
-            bn.dwo   = bn.dwo,
-            # Including Potentially Observable (PO), so ALL non-latent nodes
-            d.dwoop  = d.dwoop,
-            bn.dwoop = bn.dwoop
-    ))
-}
 
 bn_fit_node_group_model_list <- function(
         m_proxy_list, Beta = 0.6,
@@ -2419,7 +2295,7 @@ dagitty_to_bn <- function(dag) {
 causal_estimate_over_all_adj_sets <- function(
         dag, data, latent_nodes = NULL,
         exposure = "S.Kn", outcome = "Grade",
-        intervention_val = 1) {
+        x1_val = 1, x0_val = -1) {
     # This estimates P(Grade|S.Kn, Adjustment Set) over all adjustment sets
     # This will give a range of that the model suggests is the true effect
     adj_sets <- adjustmentSets(dag, exposure = exposure, outcome = outcome,
@@ -2437,25 +2313,37 @@ causal_estimate_over_all_adj_sets <- function(
             formula_str <- str_c(outcome, " ~ ", exposure, " + ",
                                  str_c(adj_set, collapse = " + "))
         }
-        fit <- lm(as.formula(formula_str), data = data)
-        # This was the old preds
-        y1_1 <- predict(fit,
-                     newdata = data |>
-                         mutate({{ exposure }} := intervention_val),
+        if (class(data[[1]]) == "factor") {
+            fit <- glm(as.formula(formula_str), data = data, family = binomial)
+            x1_data <- data |> 
+                mutate({{exposure}} := factor(x1_val, levels = c(-1,1)))
+            x0_data <- data |> 
+                mutate({{exposure}} := factor(x0_val, levels = c(-1,1)))
+        } else {
+            fit <- lm(as.formula(formula_str), data = data)
+            x1_data <- data |> 
+                mutate({{exposure}} := x1_val)
+            x0_data <- data |> 
+                mutate({{exposure}} := x0_val)
+        }
+        # Simulating for potential outcomes
+        y1_x1 <- predict(fit,
+                     newdata = x1_data,
                      se.fit = TRUE)
-        y1_0 <- predict(fit,
-                     newdata = data |>
-                         mutate({{ exposure }} := 0),
+        y1_x0 <- predict(fit,
+                     newdata = x0_data,
                      se.fit = TRUE)
-        preds.fit <- y1_1$fit - y1_0$fit
-        se1 <- sqrt(mean(y1_1$se.fit^2))
-        se0 <- sqrt(mean(y1_0$se.fit^2))
+        
+        preds.fit <- y1_x1$fit - y1_x0$fit
+        se1 <- sqrt(mean(y1_x1$se.fit^2))
+        se0 <- sqrt(mean(y1_x0$se.fit^2))
         se <- max(se1, se0)
         
     list(
-        mean = mean(preds.fit),
-        se   = se,
-        y_eff = preds.fit
+        y1_x0 = y1_x0,
+        y1_x1 = y1_x1,
+        eff_mean = mean(preds.fit),
+        eff_se   = se
     )
     }
     )
@@ -2466,126 +2354,21 @@ causal_estimate_over_all_adj_sets <- function(
                 std_error = std_errors))
 }
 
-generate_causal_estimate_comparisons <- function(
-        Model = "M1",
-        Beta = 0.6, # strength of signal along paths
-        # might need to change for different models depending on present nodes
-        exposure = "S.Kn", outcome = "Grade",
-        intervention_val = 1,
-        # for placiing proxy nodes
-        x_p_nudge = 0, y_p_nudge = -2
-) {
-    ground_truth_dag <- ddags[[Model]]
-    model_list <- m_build_model_with_proxy_nodes(
-        m = Model, 
-        x_p_nudge = x_p_nudge, 
-        y_p_nudge = y_p_nudge)
-    
-    bn_list <- bn_fit_model_list(model_list, Beta = Beta)
-    # Ground truth uses full simmed data
-    est <- partial(causal_estimate_over_all_adj_sets,
-                   exposure = exposure, outcome = outcome,
-                   intervention_val = intervention_val)
-    
-    ground_truth <- est(dag = ground_truth_dag, data = bn_list$d.full)
-    expert_dag <- est(
-        dag = ground_truth_dag, 
-        data = bn_list$d.full,
-        latent_nodes = 
-            all_nodes_adj |> 
-            filter(Model == Model, measurability == "L") |> 
-            pull(name))
-    can_estimate_dw <- 
-        (exposure %in% model_list$node_list_dw) & (outcome %in% model_list$node_list_dw)
-    can_estimate_dwo <- 
-        (exposure %in% model_list$node_list_dwo) & (outcome %in% model_list$node_list_dwo)
-    can_estimate_dwoop <- 
-        (exposure %in% model_list$node_list_dwoop) & (outcome %in% model_list$node_list_dwoop)
-    if (can_estimate_dw) {
-        dw <- est(   
-            dag = bn_to_dagitty(bn_list$bn.dw) , 
-            data = bn_list$d.dw)
-    } else {
-        dw <- list("adjustment_set" = NA, "estimate" = NA)
-        message("Nodes not found in DW node list")
-    }
-    
-    if (can_estimate_dwo) {
-        dwo <- est(  
-            dag = bn_to_dagitty(bn_list$bn.dwo) , 
-            data = bn_list$d.dwo)
-    } else {
-        dwo <- list("adjustment_set" = NA, "estimate" = NA)
-        message("Nodes not found in DWO node list")
-    }
-    
-    if (can_estimate_dwoop) {
-        dwoop <- est(
-            dag = bn_to_dagitty(bn_list$bn.dwoop) , 
-            data = bn_list$d.dwoop)
-    } else {
-        dwoop <- list("adjustment_set" = NA, "estimate" = NA)
-        message("Nodes not found in DWOOP node list")
-    }
-    
-    estimates <- tibble(
-        Model = Model,
-        DAG = c("Ground Truth", "Expert DAG", "Data Warehouse", "Observable", "Potentially Observable") |> 
-            factor(levels = c("Ground Truth", "Expert DAG","Data Warehouse", "Observable", "Potentially Observable")),
-        exposure = exposure, 
-        outcome = outcome,
-        adjustment_sets = list(
-            ground_truth$adjustment_set,
-            expert_dag$adjustment_set,
-            dw$adjustment_set,
-            dwo$adjustment_set,
-            dwoop$adjustment_set
-        ),
-        estimate_mean = c(
-            mean(ground_truth$estimate),
-            mean(expert_dag$estimate),
-            mean(dw$estimate),
-            mean(dwo$estimate),
-            mean(dwoop$estimate)
-        ),
-        estimate_std_errors = c(
-            mean(ground_truth$std_error),
-            mean(expert_dag$std_error),
-            mean(dw$std_error),
-            mean(dwo$std_error),
-            mean(dwoop$std_error)
-        ),
-        estimate_sd = c(
-            sd(ground_truth$estimate),
-            sd(expert_dag$estimate),
-            sd(dw$estimate),
-            sd(dwo$estimate),
-            sd(dwoop$estimate)
-        )
-    )
-    
-    return( # Monster list of everything we need
-        list(
-            Model = Model,
-            DAG = ground_truth_dag,
-            augmented_DAGs = model_list,
-            fitted_BN = bn_list,
-            estimates = estimates
-        )
-    )
-}
-
 generate_node_group_causal_estimate_comparisons <- function(
         Model = "M1",
         Beta = 0.6, # strength of signal along paths
         # might need to change for different models depending on present nodes
         exposure = "S.Kn", outcome = "Grade",
-        intervention_val = 1,
+        x1_val = 1, x0_val = -1, # should be 1 and 0 for continuous
         # for placiing proxy nodes
         x_p_nudge = 0, y_p_nudge = -2
 ) {
-    ground_truth_dag <- tcdags_node_group[[Model]] |> tidy_graph_to_dag()
-    model_list <- m_build_node_group_model_with_proxy_nodes(
+    ground_truth_dag <- 
+        tcdags_node_group[[Model]] |> 
+        tidy_graph_to_dag()
+    
+    model_list <- 
+        m_build_node_group_model_with_proxy_nodes(
         m = Model, 
         x_p_nudge = x_p_nudge, 
         y_p_nudge = y_p_nudge)
@@ -2594,7 +2377,7 @@ generate_node_group_causal_estimate_comparisons <- function(
     # Ground truth uses full simmed data
     est <- partial(causal_estimate_over_all_adj_sets,
                    exposure = exposure, outcome = outcome,
-                   intervention_val = intervention_val)
+                   x1_val = x1_val, x0_val = x0_val)
     
     ground_truth <- est(dag = ground_truth_dag, data = bn_list$d.full)
     expert_dag <- est(
