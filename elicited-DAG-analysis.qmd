@@ -63,13 +63,13 @@ source("graph_helpers.R")
 
 We will use curvy uppercase ($\mathcal{M,G,V,E}$) script for sets across all the models, $\mathbf{BOLD}$ uppercase for sets, and $UPPER$ case standard for instances in the models. Lowercase like $v$ will be reserved for imagining actual values (so a node taking on a particular value).  
 
-The models are indexed as $\mathcal{M}=\{M_1,M_2,\dots,M_8 \}$ with their corresponding graphical form as $\mathcal{G}=\{G_1,G_2,\dots,G_8 \}$, and each graphical model $G_k$ comprises of a set of vertices $\mathbf{V}_{G_k}$ and edges $\mathbf{E}_{G_k}$, so $G_k=(\mathbf{V}_{G_k}, \mathbf{E}_{G_k})$, with the set of all nodes being $\mathcal{V}$ edges being $\mathcal{E}$. $E_{ij}=V_i \rightarrow V_j$ indicates an edge between two nodes. If two nodes are connected through a mediated path, such as $V_i \rightarrow \dots \rightarrow V_j$ then we write $\mathrm{De}_{ij}=V_i \rightsquigarrow V_j$ or $V_i \in \mathrm{an}(V_j)$. To specify model context for ancestors, descendants and mediated parts we subscript the model: $V_i \in \mathrm{an}_{G_k}(V_j)$ or $V_i \rightsquigarrow _{G_k} V_j$. Nodes $V_i$ are indexed over all models (so across $\mathcal{V}$), but if we want to talk about $V_i$ as it stands in $G_k$ we would use $V_{i:G_k}$, and likewise for an edge $E_{ij:G_k}$ residing in the context of model $G_k$.
+The models are indexed as $\mathcal{M}=\{M_1,M_2,\dots,M_8 \}$ with their corresponding graphical form as $\mathcal{G}=\{G_1,G_2,\dots,G_8 \}$, and each graphical model $G_k$ comprises of a set of vertices $\mathbf{V}_{k}$ and edges $\mathbf{E}_{k}$, so $G_k=(\mathbf{V}_{k}, \mathbf{E}_{k})$, with the set of all nodes being $\mathcal{V}$ edges being $\mathcal{E}$. $E_{ij}=V_i \rightarrow V_j$ indicates an edge between two nodes. If two nodes are connected through a mediated path, such as $V_i \rightarrow \dots \rightarrow V_j$ then we write $\mathrm{De}_{ij}=V_i \rightsquigarrow V_j$ or $V_i \in \mathrm{an}(V_j)$. To specify model context for ancestors, descendants and mediated parts we subscript the model: $V_i \in \mathrm{an}_{G_k}(V_j)$ or $V_i \rightsquigarrow _{G_k} V_j$. Nodes $V_i$ are indexed over all models (so across $\mathcal{V}$), but if we want to talk about $V_i$ as it stands in $G_k$ we would use $V_{i:G_k}$, and likewise for an edge $E_{ij:G_k}$ residing in the context of model $G_k$.
 
-We will also be applying coarsening functions to create cluster DAGs. A typical coarsening functions $\varphi$ is applied to the graph, and within it all the nodes and edges. So $\varphi (G_{k})=\varphi G_{k}=(\mathbf{V}_{\varphi G_k},\mathbf{E}_{\varphi G_k})$, which will also refer to as a new cluster model $G^C_{k}=\varphi G_k$ for slightly cleaner notation, and including the $C$ for cluster. The coarsening function $\varphi$ induces an equivalence relation $\sim _\varphi$ on $\mathbf{V}_{G_k}$ where $V_i \sim_\varphi V_j$ iff $\varphi (V_i) = \varphi (V_j)$, i.e. both nodes map to the same cluster.  In this cluster model we would find $\mathbf{V}_{\varphi G_k}$. The coarsened / cluster nodes would be $[V_{i}]_{\varphi}=\{V_j \in \mathcal{V}:V_j \sim_{\varphi} V_i\}$, the equivalence class of nodes $[V_i]_{\varphi}$, or simply $[V_i]$ if $\varphi$ is clear from the context. These clusters can be relabled and reindexed to $C_a = [V_i]_{\varphi}$ for legibility.
+We will also be applying coarsening functions to create cluster DAGs. A typical coarsening functions $\varphi$ is applied to the graph, and within it all the nodes and edges. So $\varphi (G_{k})=\varphi G_{k}=(\varphi\mathbf{V}_{k},\varphi\mathbf{E}_{k})$, which will also refer to as a new cluster model $G^C_{k}=\varphi G_k$ for slightly cleaner notation, and including the $C$ for cluster. The coarsening function $\varphi$ induces an equivalence relation $\sim _\varphi$ on $\mathbf{V}_{k}$ where $V_i \sim_\varphi V_j$ iff $\varphi (V_i) = \varphi (V_j)$, i.e. both nodes map to the same cluster.  In this cluster model we would find $\varphi\mathbf{V}_{k}$. The coarsened / cluster nodes would be $[V_{i}]_{\varphi}=\{V_j \in \mathcal{V}:V_j \sim_{\varphi} V_i\}$, the equivalence class of nodes $[V_i]_{\varphi}$, or simply $[V_i]$ if $\varphi$ is clear from the context. These clusters can be relabled and reindexed to $C_a = [V_i]_{\varphi}$ for legibility.
 The edges in $\varphi G_{k}=G_{k}^{C}$ are then $E^{\varphi}_{[i][j]}=[V_i]\rightarrow [V_j]=C_a \rightarrow C_b=E^{C}_{ab}$. Choosing to use the $C$ or $\varphi$ syntax depends on the context - are we mainly discussing the cluster model $G_k^C$ or the processes of coarsening $\varphi G_{k}$?
 There is also the *causal degradation* produced by $\varphi$, which we denote as $\mathrm{deg}_\varphi$ generally, $\mathrm{deg}_\varphi({G_k})$ as applied to a particular model, and $\mathcal{L}_i{\text{-}}\mathrm{deg}_\varphi(G_k)$ to specify a particular level of the causal hierarchy, $\mathcal{L}_i:i\in \{1,2,3\}$. 
 
-A measure of *causal consistency* is also computed, but this is between two models, rather than under the process of a clustering. So 
+A measure of *causal consistency* is also computed, but this is between two models, rather than under the process of a clustering. This will be denoted as $\mathcal{L}_{i}\text{-}\mathrm{d}_{xy}$ or $\mathcal{L}_{i}\text{-}\mathrm{d}$ if symmetric, so where $\mathcal{L}_{i}\text{-}\mathrm{d}_{xy}(G_a,G_b)=\mathcal{L}_{i}\text{-}\mathrm{d}_{xy}(G_b,G_a)$
 
 Notation for adjustment sets? Things like that?
 
@@ -1895,10 +1895,85 @@ THIS BIT NEEDS TO BE RE-WRITTEN FOR THE NEW CODE
 L1 (association) and L2 (intervention / do) levels on the causal hierarchy can be examined at a graph level through:
 
 - $\mathcal{L}_1$ Examining all conditional probability implications. If these are preserved between graphs then the two graphs are $\mathcal{L}_1$-consistent. ? An equivalent may be having similar / same CPDAGs - complete partial DAGs - which are the Markov equivalent class of DAGs. These induce the same conditional independencies (Thm 1.2.4 in Pearl 2009). These are the skeleton + all v-structures (colliders) arrowed in.
-- $\mathcal{L}_2$ Examining all 'do' operator implications. If these are preserved between graphs then the two graphs are $\mathcal{L}_2$-consistent. Or - use the Structural Intervention Distance (Peters & Buhlmann, 2015)
-- $\mathcal{L}_3$ Is not explored - this would probably require a SCM, not just the DAG.
+- $\mathcal{L}_2$ Examining all 'do' operator implications - consistency of estimation of causal effects. If these are preserved between graphs then the two graphs are $\mathcal{L}_2$-consistent. This is examined through finding the  
+- $\mathcal{L}_3$ Is not explored - this would require a full joint-distribution of a SCM.
 
 ## Causal Consistency when Clustering
+
+### AI slop description
+
+\subsection*{L2 consistency between causal graphs}
+
+Let $\mathcal{G}_X, \mathcal{G}_Y$ be causal DAGs over vertex sets
+$\mathbf{V}_{\mathcal{G}_X}, \mathbf{V}_{\mathcal{G}_Y}$, with shared vertices
+$\mathcal{S} = \mathbf{V}_X \cap \mathbf{V}_Y$. The evaluated pairs are
+$$
+\mathcal{P} \;=\;
+\bigl\{(x,y) \in \mathcal{S} \times \mathcal{S} \,:\, x \neq y \bigr\},
+\qquad\text{or, under the causal restriction,}
+$$
+$$
+\mathcal{P}^{c} \;=\;
+\bigl\{(x,y) \in \mathcal{S} \times \mathcal{S} \,:\,
+x \in \operatorname{an}_{\mathcal{G}_X}(y) \cup
+      \operatorname{an}_{\mathcal{G}_Y}(y),\ x \neq y \bigr\},
+$$
+i.e.\ pairs for which at least one model asserts a causal effect.
+
+\paragraph{Identifiability and adjustment sets.}
+For a graph $\mathcal{G}$ and pair $(x,y)$, let
+$\mathbf{Z}_{\mathcal{G}}(x,y)$ denote a \emph{complete} adjustment set:
+either the canonical set $\operatorname{Adjust}_{\mathcal{G}}(x,y)$
+(Perkovi\'c et al.\ 2018) or the optimal set
+$\mathbf{O}_{\mathcal{G}}(x,y)$ (Henckel et al.\ 2022). Completeness means
+$\mathbf{Z}_{\mathcal{G}}(x,y)$ is valid if and only if any valid adjustment
+set exists, so the identifiability indicator is well-defined as
+$$
+\iota_{\mathcal{G}}(x,y) = 1
+\;\iff\;
+P\bigl(y \mid \operatorname{do}(x)\bigr)
+= \sum_{\mathbf{z}} P(y \mid x, \mathbf{z})\,P(\mathbf{z})
+\quad\text{for}\quad
+\mathbf{Z} = \mathbf{Z}_{\mathcal{G}}(x,y).
+$$
+
+Write $\tilde{\mathbf{Z}}_{\mathcal{G}}(x,y) = \mathbf{Z}_{\mathcal{G}}(x,y) \cap \mathcal{S}$ for the shared-vertex restriction, and abbreviate $\iota_X = \iota_{\mathcal{G}_X}(x,y)$, $\tilde{\mathbf{Z}}_X = \tilde{\mathbf{Z}}_{\mathcal{G}_X}(x,y)$, etc.
+
+
+S
+
+
+#### Refining the slop
+
+Might use $\iota_X \ge \iota_Y$ as a filter on P, then everything is easier. 
+
+Or, if we let $\mathcal{P}$ be only the non-vacuous ones, the $\mathcal{P}_{\iota_X \ge \iota_Y}$ then we can remove the weights entirely and have:
+
+
+$$
+\delta_{X \to Y}(x,y) =
+\begin{cases}
+\max\bigl\{|\tilde{\mathbf{Z}}_X|,\, 1\bigr\}
+  & \iota_X = 1,\ \iota_Y = 0
+    \quad\text{(claim contradicted: all recommendations fail)} \\[4pt]
+0 & \iota_X = \iota_Y = 0
+    \quad\text{(agreed non-identifiability)} \\[4pt]
+\bigl|\tilde{\mathbf{Z}}_X \setminus \tilde{\mathbf{Z}}_Y\bigr|
+  & \iota_X = \iota_Y = 1
+    \quad\text{(omitted recommendations)} \\[4pt]
+    \text{undefined} & \iota_X = 0,\ \iota_Y = 1 
+    \quad\text{(no claim from X?)}
+    
+\end{cases}
+$$
+$$
+\qquad
+d_{X \to Y} =
+\frac{\displaystyle\sum_{\mathcal{P}:\, \iota_X \geq \iota_Y}
+      \delta_{X \to Y}(x,y)}
+     {\displaystyle\sum_{\mathcal{P}:\, \iota_X \geq \iota_Y}
+      \max\bigl\{|\tilde{\mathbf{Z}}_X(x,y)|,\, 1\bigr\}}
+$$
 
 ### L1 consistency when clustering
 

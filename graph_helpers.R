@@ -644,7 +644,43 @@ gcm_fuzzy_L1_consistency <- function(gX, gY) {
     )
 }
 
-
+gcm_optimal_adjustment_set <- function(g, exposure, outcome) {
+    # !! Code generated with Claude for this function (Fable). 
+    # Seems ok on some minimal testing. 
+    # O-set (Henckel, Perković & Maathuis 2022): O = pa(cn) \ forb
+    # Returns a LIST mirroring dagitty::adjustmentSets():
+    #   list()               -> not identifiable by adjustment
+    #   list(character(0))   -> identifiable, empty adjustment set
+    #   list(<chr vector>)   -> identifiable, the O-set
+    
+    if (!(class(g)[[1]] == "dagitty")) g <- tidygraph_to_dagitty(g)
+    # cn: nodes on proper causal paths x -> y (includes y, excludes x)
+    cn <- setdiff(intersect(descendants(g, exposure), 
+                            ancestors(g, outcome)), 
+                  exposure)
+    
+    if (length(cn) == 0) {
+        # Null effect: O-set construction degenerates. Fall back to the
+        # canonical set for exact dagitty parity (complete for any pair).
+        s <- adjustmentSets(g, exposure, outcome, type = "canonical")
+        if (length(s) == 0) return(list())
+        return(list(sort(as.character(unname(unlist(s))))))
+    }
+    
+    forb <- union(
+        unique(unlist(lapply(cn, \(v) descendants(g, v)))),
+        exposure)
+    O <- setdiff(
+        unique(unlist(lapply(cn, \(v) parents(g, v)))),
+        forb)
+    
+    # Completeness (for x -> y with a causal path): O is valid iff ANY
+    # valid adjustment set exists, so this doubles as the id indicator
+    if (!isAdjustmentSet(g, O, exposure = exposure, outcome = outcome))
+        return(list())
+    
+    list(sort(O))
+}
 
 # adj_fingerprint 
 # getting the ZX, idX etc from function below
@@ -652,7 +688,8 @@ gcm_fuzzy_L1_consistency <- function(gX, gY) {
 # Needs to work better for M5, D5, D7, ...
 # Many NaNs
 
-gcm_fuzzy_L2_consistency <- function(gX, gY) {
+gcm_fuzzy_L2_consistency <- function(gX, gY,
+                                     adj_type = "canonical") {
     # Takes in two tidygraph / dagitty objects
     # Examines them for L2 causal consistency through checking if, for each pair,
     # (x,y) where x is an ancestor of y, and (x.y) are in both graphs, 
@@ -678,7 +715,15 @@ gcm_fuzzy_L2_consistency <- function(gX, gY) {
         filter(x != y)
     
     canAdjSet <- function(g, exposure, outcome) {
-        s <- adjustmentSets(g, exposure = exposure, outcome = outcome, type = "canonical")
+        if (str_detect(adj_type, "^[Cc]")) {
+            s <- adjustmentSets(g, exposure = exposure, outcome = outcome, 
+                                type = adj_type)
+        } else if (str_detect(adj_type, "^[Oo]")) {
+            s <- gcm_optimal_adjustment_set(g, exposure, outcome)
+        } else {
+            warning(str_c(adj_type, ": adjustment method not recognised."))
+            return(NULL)
+        }
         if (length(s) == 0) return(NULL)              # not identifiable
         sort(as.character(unname(unlist(s))))         # identifiable (possibly empty)
     }
@@ -774,6 +819,204 @@ gcm_fuzzy_L2_consistency <- function(gX, gY) {
 }
 
 
+# ===================================================================
+# gcm_fuzzy_L2_consistency, refactored
+#
+# Structure:
+#   gcm_adj_set()           one pair, one graph: the set or NULL
+#                           (adj_type choice lives here, nowhere else)
+#   gcm_adj_fingerprint()   one graph: sets + identifiability + causal
+#                           flag for all ordered pairs (precomputable!)
+#   gcm_score_direction()   pure scorer: mirrors collapse to one function
+#   gcm_fuzzy_L2_consistency()  thin orchestrator
+#
+# For a suite of m graphs, compute each fingerprint ONCE over the
+# graph's full node set and pass via fpX/fpY -- the m*(m-1)/2 pairwise
+# comparisons then involve no dagitty calls at all.
+# ===================================================================
+
+# ---- 1. Adjustment set for one pair --------------------------------
+
+gcm_adj_set <- function(g, exposure, outcome,
+                        adj_type = c("canonical", "optimal")) {
+    # Returns: NULL           -> not identifiable by adjustment
+    #          character(0)   -> identifiable, empty set
+    #          <chr vector>   -> identifiable, the set
+    # NB "minimal" deliberately not offered: it returns multiple sets,
+    # and unlist() would union them into a set that is not itself an
+    # adjustment set.
+    adj_type <- match.arg(adj_type)
+    s <- switch(adj_type,
+                canonical = adjustmentSets(g, exposure, outcome,
+                                           type = "canonical"),
+                optimal   = gcm_optimal_adjustment_set(g, exposure, outcome))
+    if (length(s) == 0) return(NULL)
+    sort(as.character(unname(unlist(s))))
+}
+
+# ---- 2. Per-graph fingerprint ---------------------------------------
+
+gcm_adj_fingerprint <- function(g, pairs = NULL,
+                                adj_type = c("canonical", "optimal")) {
+    # tibble: x, y, z (list of sets/NULLs), id, causal
+    # `causal` = x is an ancestor of y in THIS graph
+    adj_type <- match.arg(adj_type)
+    if (!inherits(g, "dagitty")) g <- tidygraph_to_dagitty(g)
+    if (is.null(pairs)) {
+        pairs <- expand_grid(x = names(g), y = names(g)) |>
+            filter(x != y)
+    }
+    an <- map(set_names(names(g)), \(v) ancestors(g, v))  # precompute
+    
+    pairs |>
+        mutate(
+            z      = map2(x, y, \(x, y) gcm_adj_set(g, x, y, adj_type)),
+            id     = !map_lgl(z, is.null),
+            causal = map2_lgl(x, y, \(x, y) x %in% an[[y]])
+        )
+}
+
+
+# ===================================================================
+# gcm_score_direction, pooled-ratio version
+#
+# Implements the simplified formulation:
+#
+#   d_{X->Y} = sum(delta) / sum(max(|Z~_X|, 1))   over pairs with
+#                                                 iota_X >= iota_Y
+#   delta = 0                 excluded (iota_X = 0, iota_Y = 1)
+#         = contradiction     iota_X = 1, iota_Y = 0
+#            max(|Z~_X|, 1)
+#         = 0                 iota_X = iota_Y = 0
+#         = |Z~_X \ Z~_Y|     iota_X = iota_Y = 1
+#
+# Interpretation: of all covariate recommendations G_X makes across
+# evaluable pairs, the fraction G_Y rejects -- with identifiability
+# contradictions counting as total rejection ("full") and agreed
+# non-identifiability / empty recipes counting as one unit of
+# agreement each.
+#
+# Notes vs the previous version:
+#  * exactly equivalent on graded pairs (the old weighted mean was
+#    already this pooled ratio in disguise)
+#  * empty_agreement = "agree" is now hard-wired: an empty reference
+#    recipe scores as agreement with unit weight (reverse-direction
+#    omissions are captured by err in the Y->X pass)
+#  * NaN only possible if every pair is excluded
+#
+# Drop-in replacement: same call sites in gcm_fuzzy_L2_consistency,
+# minus the empty_agreement argument.
+# ===================================================================
+
+L2_score_direction <- function(id_ref, id_oth, z_ref, z_oth,
+                               use = TRUE) {
+    
+    err  <- map2_int(z_ref, z_oth, \(a, b) length(setdiff(a, b)))
+    size <- lengths(z_ref)                 # NULL -> 0
+    unit <- pmax(size, 1)                  # max(|Z~_X|, 1)
+    
+    excluded <- !use | (!id_ref & id_oth)  # iota_X < iota_Y, or filtered
+    
+    reff <- mean(id_oth[!id_ref & use]) # refutation rate
+    
+    delta <- case_when(
+        excluded           ~ 0,
+        id_ref & !id_oth   ~ as.numeric(unit),
+        !id_ref & !id_oth  ~ 0,
+        .default = as.numeric(err)         # both identify: raw omission count
+    )
+    w <- if_else(excluded, 0, as.numeric(unit))
+    
+    W <- sum(w)
+    list(
+        d_pair = if_else(w > 0, delta / w, NA_real_),  # per-pair, diagnostic
+        w_pair = w,
+        delta  = delta,                                # raw numerator terms
+        d = if (W > 0) sum(delta) / W else NA_real_,
+        n_effective  = sum(w > 0),
+        reff_r = reff,
+        total_weight = W
+    )
+}
+
+
+# ---- 4. L2 consistency Orchestrator ------
+
+gcm_L2_consistency <- function(gX, gY,
+                                     adj_type = c("canonical", "optimal"),
+                                     causal_pairs_only = FALSE,
+                                     # empty_agreement = c("vacuous", "agree"),
+                                     fpX = NULL, fpY = NULL) {
+    # causal_pairs_only: restrict to pairs where x is an ancestor of y
+    #   in AT LEAST ONE graph (union, not intersection: one-sided causal
+    #   claims are the most diagnostic disagreements).
+    # empty_agreement: how to weight pairs where both graphs identify
+    #   with an empty shared-restricted set. "vacuous" = weight 0
+    #   (current behaviour); "agree" = weight 1 when both sets are
+    #   empty (recommended with adj_type = "optimal", see notes).
+    # fpX, fpY: optionally pass precomputed full fingerprints from
+    #   gcm_adj_fingerprint() to skip all dagitty calls here.
+    adj_type <- match.arg(adj_type)
+    
+    if (!inherits(gX, "dagitty")) gX <- tidygraph_to_dagitty(gX)
+    if (!inherits(gY, "dagitty")) gY <- tidygraph_to_dagitty(gY)
+    
+    shared <- intersect(names(gX), names(gY))
+    pairs  <- expand_grid(x = shared, y = shared) |> filter(x != y)
+    
+    if (is.null(fpX)) fpX <- gcm_adj_fingerprint(gX, pairs, adj_type)
+    else              fpX <- semi_join(fpX, pairs, by = c("x", "y"))
+    if (is.null(fpY)) fpY <- gcm_adj_fingerprint(gY, pairs, adj_type)
+    else              fpY <- semi_join(fpY, pairs, by = c("x", "y"))
+    stopifnot(nrow(fpX) == nrow(pairs), nrow(fpY) == nrow(pairs))
+    fpX <- arrange(fpX, x, y); fpY <- arrange(fpY, x, y)
+    pairs <- arrange(pairs, x, y)
+    
+    zx_sh <- map(fpX$z, \(z) if (is.null(z)) NULL else intersect(z, shared))
+    zy_sh <- map(fpY$z, \(z) if (is.null(z)) NULL else intersect(z, shared))
+    use   <- if (causal_pairs_only) fpX$causal | fpY$causal else TRUE
+    
+    sXY <- L2_score_direction(fpX$id, fpY$id, zx_sh, zy_sh,
+                               use)
+    sYX <- L2_score_direction(fpY$id, fpX$id, zy_sh, zx_sh,
+                               use)
+    
+    df.out <- pairs |>
+        mutate(
+            dXY = sXY$d_pair, dYX = sYX$d_pair,
+            wXY = sXY$w_pair, wYX = sYX$w_pair,
+            idX = fpX$id, idY = fpY$id,
+            causalX = fpX$causal, causalY = fpY$causal,
+            zx_sh = zx_sh, zy_sh = zy_sh
+        )
+    
+    list(
+        dXY  = sXY$d,     dYX  = sYX$d,
+        # rXY = sXY$r, rYX = sYX,
+        # NaN/NA diagnosis: if d is NA, these say why (no usable evidence)
+        n_effective_XY  = sXY$n_effective,
+        n_effective_YX  = sYX$n_effective,
+        total_weight_XY = sXY$total_weight,
+        total_weight_YX = sYX$total_weight,
+        df = df.out, shared_nodes = shared,
+        settings = list(adj_type = adj_type,
+                        causal_pairs_only = causal_pairs_only)
+    )
+}
+
+# ---- 5. Suite usage sketch -------------------------------------------
+# graphs <- list(M1 = g1, M5 = g5, D5 = d5, ...)
+# fps <- map(graphs, gcm_adj_fingerprint, adj_type = "optimal")
+# res <- combn(names(graphs), 2, simplify = FALSE) |>
+#     map(\(p) gcm_fuzzy_L2_consistency(
+#         graphs[[p[1]]], graphs[[p[2]]],
+#         adj_type = "optimal", empty_agreement = "agree",
+#         fpX = fps[[p[1]]], fpY = fps[[p[2]]]))
+
+
+
+
+
 # Comparing two graphs ----------------
 
 align_adjacency_matrices <- function(g1, g2, common = TRUE, nodes = NULL) {
@@ -804,6 +1047,11 @@ align_adjacency_matrices <- function(g1, g2, common = TRUE, nodes = NULL) {
     
     list(m1 = mat1, m2 = mat2, nodes = nodes)
 }
+
+
+
+
+
 
 gcm_latent_projection <- function(g, latent_nodes) {
     
@@ -897,26 +1145,6 @@ gcm_L2_consistency_SID <- function(g1, g2,
     result
 }
 
-gcm_L2_consistency <- function(gX, gY) {
-    fuzzyL2 <- gcm_fuzzy_L2_consistency(gX, gY)
-    sidXYL2 <- gcm_L2_consistency_SID(gX, gY)
-    sidYXL2 <- gcm_L2_consistency_SID(gY, gX)
-    df.out <- 
-        tibble(
-        sidXY = sidXYL2$sid.normalised,
-        sidYX = sidYXL2$sid.normalised,
-        idXY = fuzzyL2$idXY,
-        idYX = fuzzyL2$idYX,
-        ErrXY = fuzzyL2$ErrXY,
-        ErrYX = fuzzyL2$ErrYX
-    )
-    return(list(
-        L2_consistincy = df.out,
-        fuzzy = fuzzyL2,
-        sidXY = sidXYL2,
-        sidYX = sidYXL2
-    ))
-}
 
 
 
