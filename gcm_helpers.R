@@ -149,6 +149,24 @@ gcm_merge <- function(g1, g2) {
 }
 
 
+gcm_to_mag <- function(g, S) {
+    # S is the set of nodes to keep
+    if (inherits(g, "tbl_graph")) g <- tidygraph_to_dagitty(g)
+    an <- setNames(lapply(S, function(v) dagitty::ancestors(g, v)), S)
+    edge <- function(p) {
+        x <- p[1]; y <- p[2]; rest <- setdiff(S, p)
+        for (k in 0:length(rest))
+            for (Z in combn(rest, k, simplify = FALSE))
+                if (dagitty::dseparated(g, x, y, Z)) return(NA_character_)
+        if (x %in% an[[y]])      sprintf("%s -> %s", x, y)
+        else if (y %in% an[[x]]) sprintf("%s -> %s", y, x)
+        else                     sprintf("%s <-> %s", x, y)
+    }
+    e <- na.omit(vapply(combn(S, 2, simplify = FALSE), edge, character(1)))
+    dagitty::dagitty(paste0("mag { ", paste(c(S, e), collapse = " ; "), " }"))
+}
+
+
 
 # Causality helpers -------------------------
 
@@ -262,7 +280,7 @@ gcm_implied_conditional_independencies <- function(g) {
 
 gcm_optimal_adjustment_set <- function(g, exposure, outcome) {
     # !! Code generated with Claude for this function (Fable). 
-    # Seems ok on some minimal testing. 
+    # Seems ok on testing. 
     # O-set (Henckel, Perković & Maathuis 2022): O = pa(cn) \ forb
     # Returns a LIST mirroring dagitty::adjustmentSets():
     #   list()               -> not identifiable by adjustment
@@ -303,7 +321,30 @@ gcm_optimal_adjustment_set <- function(g, exposure, outcome) {
 
 
 
-
+## L0 consistency
+# Not really a thing on the causal hierarchy, but instead just a measure
+# of how many nodes (relatively) the two models share
+# Here the "fingerprint" is simply the list of nodes
+gcm_L0_consistency <- function(gX, gY) {
+    if (inherits(gX, "tbl_graph")) gX <- tidygraph_to_dagitty(gX)
+    if (inherits(gY, "tbl_graph")) gY <- tidygraph_to_dagitty(gY)
+    
+    n_X <- length(names(gX))
+    n_Y <- length(names(gY))
+    shared <- intersect(names(gX), names(gY))
+    union <- union(names(gX), names(gY))
+    
+    jaccard <- length(shared) / length(union)
+    dXY <- length(shared) / n_X
+    dYX <- length(shared) / n_Y
+    
+    list(
+        d = 1 - jaccard,
+        dXY = dXY,
+        dYX = dYX,
+        shared_nodes = shared
+    )
+}
 
 
 
@@ -361,6 +402,7 @@ gcm_ci_fingerprint <- function(g, vocab = NULL, max_cond = Inf) {
                 if (dseparated(g, p[1], p[2], Z)) {
                     rows[[length(rows) + 1]] <- tibble(
                         x = p[1], y = p[2],
+                        # It is critical that Z is sorted here!!!
                         Z = paste(sort(Z), collapse = ","))
                 }
             }
@@ -434,24 +476,39 @@ gcm_L1_consistency <- function(gX, gY, max_cond = Inf,
     
     if (is.null(fpX)) fpX <- gcm_ci_fingerprint(gX, shared, max_cond)
     if (is.null(fpY)) fpY <- gcm_ci_fingerprint(gY, shared, max_cond)
+
+    # This captures shared CI where the co variate set Z is not shared    
+    fpXfull.noZ <- gcm_ci_fingerprint(gX, max_cond = max_cond) |> 
+        filter(x %in% shared, y %in% shared) |> 
+        distinct(x,y)
+    fpYfull.noZ <- gcm_ci_fingerprint(gY, max_cond = max_cond) |> 
+        filter(x %in% shared, y %in% shared) |> 
+        distinct(x,y)
+    ci_from_shared_in_either <- full_join(fpXfull.noZ, fpYfull.noZ, by = c("x", "y"))
+    ci_from_shared_in_both <- inner_join(fpXfull.noZ, fpYfull.noZ, by = c("x", "y"))
     
     sXY <- L1_score_direction(fpX, fpY)
     sYX <- L1_score_direction(fpY, fpX)
     
+    # TODO: Is NA_real_ the correct response for n_union = 0?
     kx <- gcm_claim_keys(fpX); ky <- gcm_claim_keys(fpY)
-    n_union <- length(union(kx, ky))
-    jaccard <- if (n_union == 0) 1 else length(intersect(kx, ky)) / n_union
+    n_union <- length(union(kx, ky)) + nrow(ci_from_shared_in_either)
+    n_intersect <- length(intersect(kx, ky)) + nrow(ci_from_shared_in_both)
+    jaccard <- if (n_union == 0) NA_real_ else n_intersect / n_union
     # n_union == 0: both saturated -> identical (empty) claim sets
     
     list(
+        d = 1 - jaccard,
         dXY = sXY$d, dYX = sYX$d,
         L1XY = 1 - sXY$d, L1YX = 1 - sYX$d,
         jaccard = jaccard,                    # symmetric summary
         markov_equiv_on_margin = setequal(kx, ky),
         n_claims_X = sXY$n_claims, n_claims_Y = sYX$n_claims,
         only_in_X = sXY$lost, only_in_Y = sYX$lost,
+        fpX = fpX, fpY = fpY,
         shared_nodes = shared,
-        fpX = fpX, fpY = fpY
+        ci_from_shared_in_either = ci_from_shared_in_either,
+        ci_from_shared_in_both = ci_from_shared_in_both
     )
 }
 
@@ -527,28 +584,10 @@ gcm_cluster_L1_degradation <- function(g, .f, max_cond = Inf) {
 
 
 
-
-
-# ===================================================================
-# gcm_fuzzy_L2_consistency, refactored
-#
-# Structure:
-#   gcm_adj_set()           one pair, one graph: the set or NULL
-#                           (adj_type choice lives here, nowhere else)
-#   gcm_adj_fingerprint()   one graph: sets + identifiability + causal
-#                           flag for all ordered pairs (precomputable!)
-#   gcm_score_direction()   pure scorer: mirrors collapse to one function
-#   gcm_fuzzy_L2_consistency()  thin orchestrator
-#
-# For a suite of m graphs, compute each fingerprint ONCE over the
-# graph's full node set and pass via fpX/fpY -- the m*(m-1)/2 pairwise
-# comparisons then involve no dagitty calls at all.
-# ===================================================================
-
 # ---- 1. Adjustment set for one pair --------------------------------
 
 gcm_adj_set <- function(g, exposure, outcome,
-                        adj_type = c("canonical", "optimal")) {
+                        adj_type = c("optimal", "canonical")) {
     # Returns: NULL           -> not identifiable by adjustment
     #          character(0)   -> identifiable, empty set
     #          <chr vector>   -> identifiable, the set
@@ -567,7 +606,7 @@ gcm_adj_set <- function(g, exposure, outcome,
 # ---- 2. Per-graph fingerprint ---------------------------------------
 
 gcm_adj_fingerprint <- function(g, pairs = NULL,
-                                adj_type = c("canonical", "optimal")) {
+                                adj_type = c("optimal", "canonical")) {
     # tibble: x, y, z (list of sets/NULLs), id, causal
     # `causal` = x is an ancestor of y in THIS graph
     adj_type <- match.arg(adj_type)
@@ -587,36 +626,6 @@ gcm_adj_fingerprint <- function(g, pairs = NULL,
 }
 
 
-# ===================================================================
-# L2_consistency_pairwise_score, pooled-ratio version
-#
-# Implements the simplified formulation:
-#
-#   d_{X->Y} = sum(delta) / sum(max(|Z~_X|, 1))   over pairs with
-#                                                 iota_X >= iota_Y
-#   delta = 0                 excluded (iota_X = 0, iota_Y = 1)
-#         = contradiction     iota_X = 1, iota_Y = 0
-#            max(|Z~_X|, 1)
-#         = 0                 iota_X = iota_Y = 0
-#         = |Z~_X \ Z~_Y|     iota_X = iota_Y = 1
-#
-# Interpretation: of all covariate recommendations G_X makes across
-# evaluable pairs, the fraction G_Y rejects -- with identifiability
-# contradictions counting as total rejection ("full") and agreed
-# non-identifiability / empty recipes counting as one unit of
-# agreement each.
-#
-# Notes vs the previous version:
-#  * exactly equivalent on graded pairs (the old weighted mean was
-#    already this pooled ratio in disguise)
-#  * empty_agreement = "agree" is now hard-wired: an empty reference
-#    recipe scores as agreement with unit weight (reverse-direction
-#    omissions are captured by err in the Y->X pass)
-#  * NaN only possible if every pair is excluded
-#
-# Drop-in replacement: same call sites in gcm_fuzzy_L2_consistency,
-# minus the empty_agreement argument.
-# ===================================================================
 
 L2_consistency_pairwise_score <- function(
         # each row input corresponds to a node-pair and their L2 statements
@@ -662,7 +671,7 @@ L2_consistency_pairwise_score <- function(
 # ---- 4. L2 consistency Orchestrator ------
 
 gcm_L2_consistency <- function(gX, gY,
-                                     adj_type = c("canonical", "optimal"),
+                                     adj_type = c("optimal", "canonical"),
                                      causal_pairs_only = FALSE,
                                      # empty_agreement = c("vacuous", "agree"),
                                      fpX = NULL, fpY = NULL) {
@@ -724,14 +733,258 @@ gcm_L2_consistency <- function(gX, gY,
     )
 }
 
-# ---- 5. Suite usage sketch -------------------------------------------
-# graphs <- list(M1 = g1, M5 = g5, D5 = d5, ...)
-# fps <- map(graphs, gcm_adj_fingerprint, adj_type = "optimal")
-# res <- combn(names(graphs), 2, simplify = FALSE) |>
-#     map(\(p) gcm_fuzzy_L2_consistency(
-#         graphs[[p[1]]], graphs[[p[2]]],
-#         adj_type = "optimal", empty_agreement = "agree",
-#         fpX = fps[[p[1]]], fpY = fps[[p[2]]]))
+# L1_distance_from_ci_fingerprints <- function(fpX, fpY, vocab, return_list = FALSE) {
+#     # Takes a list of L1-statements (fingerprints) from 
+#     # two graphs from the gcm_ci_fingerprint function
+#     # and their shared nodes (the vocab)
+#     
+#     # Restricting to statements only between shared nodes 
+#     # (on x, y, allowing any conditional nodes in Z)
+#     fpXinV <- fpX |> 
+#         filter(x %in% vocab, y %in% vocab) 
+#     fpYinV <- fpY |> 
+#         filter(x %in% vocab, y %in% vocab) 
+#     
+#     # All pairs already interdependent on graph
+#     fpXind <- fpXinV |> filter(Z == "") |> distinct(x,y)
+#     fpYind <- fpXinV |> filter(Z == "") |> distinct(x,y)
+#     
+#     # All possible pairs 
+#     fpXpossible <- fpXinV |> distinct(x, y)
+#     fpYpossible <- fpYinV |> distinct(x, y)
+#     
+#     trim_ci_fp_to_non_trivial_shared <- function(fp) {
+#         fp |> 
+#             rowwise() |> 
+#             mutate(Zlist = str_split(Z, pattern = ",")) |> 
+#             mutate(Z = str_c(sort(intersect(Zlist,vocab)), collapse = ",")) |> 
+#             select(-Zlist) |> 
+#             filter(Z != "") |> 
+#             distinct() |> 
+#             ungroup()
+#     }
+#     
+#     # CI relationships only with sahred nodes
+#     fpXsharedV <- 
+#         fpXinV |> 
+#         trim_ci_fp_to_non_trivial_shared()
+#     fpYsharedV <- 
+#         fpYinV |> 
+#         trim_ci_fp_to_non_trivial_shared()
+#     
+#     # We have 3 sets of statements about pairs (x,y) 
+#     # of nodes in the shared vocab
+#     # 1. pairs that are already independent
+#     # 2. pairs that can be conditionally independent
+#     # 3. pairs that are conditionally independent on some nodes from the shared
+#     # vocabulary
+#     
+#     independent_intersection <- inner_join(fpXind, fpYind, by = c("x", "y"))
+#     independent_union <- full_join(fpXind, fpYind, by = c("x", "y"))
+#     ci_possible_intersection <- inner_join(fpXpossible, fpYpossible, by = c("x", "y"))
+#     ci_possible_union <- full_join(fpXpossible, fpYpossible, by = c("x", "y"))
+#     ci_exact_intersection <- inner_join(fpXsharedV, fpYsharedV, by = c("x", "y", "Z"))
+#     ci_exact_union <- full_join(fpXsharedV, fpYsharedV, by = c("x", "y", "Z"))
+#     
+#     L1_Jaccard <- (
+#         nrow(independent_intersection) + 
+#             nrow(ci_possible_intersection) +
+#             nrow(ci_exact_intersection)) / (
+#                 nrow(independent_union) +
+#                     nrow(ci_possible_union) +
+#                     nrow(ci_exact_union)
+#             )
+#     
+#     L1_dist <- 1 - L1_Jaccard
+#     
+#     if (return_list) {
+#         list(
+#             d = L1_dist,
+#             J = L1_Jaccard,
+#             fpXind = fpXind,
+#             fpXpossible = fpXpossible,
+#             fpXsharedV = fpXsharedV,
+#             fpYind = fpYind,
+#             fpYpossible = fpYpossible,
+#             fpYsharedV = fpYsharedV
+#         )
+#     } else {
+#         return(L1_dist)
+#     }
+# }
+
+L1_distance_via_latent_projection <- function(gX, gY, return_list = FALSE) {
+    S <- intersect(gcm_nodelist(gX),gcm_nodelist(gY)) |> pull(name)
+    
+    gXproj <- gcm_latent_projection(gX, keep_nodes = S)
+    gYproj <- gcm_latent_projection(gY, keep_nodes = S)
+    
+    fpX <- gcm_ci_fingerprint(gXproj)
+    fpY <- gcm_ci_fingerprint(gYproj)
+    
+    gamma_diff <- dplyr::symdiff(fpX, fpY)
+    gamma_union <- dplyr::union(fpX, fpY)
+    
+    if (nrow(gamma_union) == 0) {
+        d <- 0
+    } else {
+        d <- nrow(gamma_diff) / nrow(gamma_union)
+    }
+    
+    if (!return_list) {
+        return(d)
+    } else {
+        return(list(
+            d = d, gammaX = fpX, gammaY = fpY
+        ))
+    }
+}
+
+L2_distance_via_latent_projection <- function(gX, gY, return_list = FALSE) {
+    S <- intersect(gcm_nodelist(gX),gcm_nodelist(gY)) |> pull(name)
+    
+    gXproj <- gcm_latent_projection(gX, keep_nodes = S)
+    gYproj <- gcm_latent_projection(gY, keep_nodes = S)
+    
+    fpX <- gcm_adj_fingerprint(gXproj)
+    fpY <- gcm_adj_fingerprint(gYproj)
+    
+    gamma_diff <- dplyr::symdiff(fpX, fpY)
+    gamma_union <- dplyr::union(fpX, fpY)
+    
+    if (nrow(gamma_union) == 0) {
+        d <- 0
+    } else {
+        d <- nrow(gamma_diff) / nrow(gamma_union)
+    }
+    
+    if (!return_list) {
+        return(d)
+    } else {
+        return(list(
+            d = d, gammaX = fpX, gammaY = fpY
+        ))
+    }
+}
+
+L1_distance_from_ci_fingerprints <- function(fpX, fpY, vocab, return_list = FALSE) {
+    
+    gamma_L1 <- function(fp) {
+        fp_in <- fp |>
+            filter(x %in% vocab, y %in% vocab) |>
+            mutate(Zset = map(Z, \(z) setdiff(str_split(z, ",")[[1]], ""))) |>
+            filter(map_lgl(Zset, \(s) all(s %in% vocab))) |>
+            mutate(Zkey = map_chr(Zset, \(s)
+                                  if (length(s) == 0) "<marginal>" else str_c(sort(s), collapse = ","))
+            )
+        
+        fp_in |>
+            distinct(x, y, Zkey) |>
+            rename(Z = Zkey) |>
+            mutate(kind = "ci")
+    }
+    
+    gX <- gamma_L1(fpX)
+    gY <- gamma_L1(fpY)
+    
+    inter <- inner_join(gX, gY, by = c("kind", "x", "y", "Z"))
+    union <- full_join( gX, gY, by = c("kind", "x", "y", "Z"))
+    
+    J <- if (nrow(union) == 0) 1 else nrow(inter) / nrow(union)
+    d <- 1 - J
+    
+    if (return_list) list(d = d, J = J, gX = gX, gY = gY) else d
+}
+
+# L2_distance_from_adj_fingerprints <- function(fpX, fpY, vocab, return_list = FALSE) {
+#     # Takes a list of 
+#     
+#     fpXinV <- fpX |> filter(x %in% vocab, y %in% vocab)
+#     fpYinV <- fpY |> filter(x %in% vocab, y %in% vocab)
+#     
+#     # Identifiable nodes
+#     fpXid <- fpXinV |> filter(id) |> distinct(x,y)
+#     fpYid <- fpYinV |> filter(id) |> distinct(x,y)
+#     
+#     # From identifiable, how? Sort into shared adjustmen list Z
+#     adj_fp_from_shared <- function(fp) {
+#         fp |> 
+#             filter(id) |>
+#             rowwise() |> 
+#             mutate(z_in_v = list(sort(intersect(unlist(z), vocab)))) |> 
+#             mutate(Z = str_c(z_in_v, collapse = ",")) |> 
+#             mutate(Z = if_else(length(z) == 0, "No adjusment", Z)) |> 
+#             select(x, y, Z)
+#     }
+#     
+#     fpXsharedZ <- fpXinV |>
+#         adj_fp_from_shared()
+#     fpYsharedZ <- fpYinV |>
+#         adj_fp_from_shared()
+#     
+#     identifiable_intersection <- inner_join(fpXid, fpYid, by = c("x", "y"))
+#     identifiable_union <- full_join(fpXid, fpYid, by = c("x", "y"))
+#     adj_set_intersection <- inner_join(fpXsharedZ, fpYsharedZ, by = c("x", "y", "Z"))
+#     adj_set_union <- full_join(fpXsharedZ, fpYsharedZ, by = c("x", "y", "Z"))
+#     
+#     L2_Jaccard <- (
+#         nrow(identifiable_intersection) +
+#             nrow(adj_set_intersection)
+#     ) / 
+#         (nrow(identifiable_union) +
+#              nrow(adj_set_union))
+#     
+#     L2_dist <- 1 - L2_Jaccard
+#     
+#     if (return_list) {
+#         list(
+#             d = L2_dist,
+#             J = L2_Jaccard,
+#             fpXid = fpXid,
+#             fpXsharedZ = fpXsharedZ,
+#             fpYid = fpYid,
+#             fpYsharedZ = fpYsharedZ
+#         )
+#     } else {
+#         return(L2_dist)
+#     }
+# }
+
+L2_distance_from_adj_fingerprints <- function(fpX, fpY, vocab, return_list = FALSE) {
+    
+    gamma_L2 <- function(fp) {
+        fp_in <- fp |>
+            filter(x %in% vocab, y %in% vocab, id) |>
+            rowwise() |>
+            filter(all(unlist(z) %in% vocab)) |>
+            ungroup()
+        
+        id_stmts <- fp_in |>
+            distinct(x, y) |>
+            mutate(kind = "id", Z = NA_character_)
+        
+        adj_stmts <- fp_in |>
+            rowwise() |>
+            mutate(Z = if (length(unlist(z)) == 0) "<empty>"
+                   else str_c(sort(unlist(z)), collapse = ",")) |>
+            ungroup() |>
+            distinct(x, y, Z) |>
+            mutate(kind = "adj")
+        
+        bind_rows(id_stmts, adj_stmts)
+    }
+    
+    gX <- gamma_L2(fpX)
+    gY <- gamma_L2(fpY)
+    
+    inter <- inner_join(gX, gY, by = c("kind", "x", "y", "Z"))
+    union <- full_join( gX, gY, by = c("kind", "x", "y", "Z"))
+    
+    J <- if (nrow(union) == 0) 1 else nrow(inter) / nrow(union)
+    d <- 1 - J
+    
+    if (return_list) list(d = d, J = J, gX = gX, gY = gY) else d
+}
 
 
 #### Clustering, revisted
@@ -826,7 +1079,8 @@ gcm_cluster_L2_degradation <- function(g, .f,
     # cluster vocabulary, so passing qd twice yields shared = clusters.
     out <- gcm_L2_consistency(qd, qd,
                               causal_pairs_only = causal_pairs_only,
-                              fpX = fp_fine, fpY = fp_coarse)
+                              fpX = fp_fine, fpY = fp_coarse,
+                              adj_type = "optimal")
     
     # -- theorem checks (both should hold; failures indicate bugs) -----
     # 1. coarse never identifies what fine cannot:
@@ -912,12 +1166,18 @@ align_adjacency_matrices <- function(g1, g2, common = TRUE, nodes = NULL) {
 
 
 
-gcm_latent_projection <- function(g, latent_nodes) {
+gcm_latent_projection <- function(g, 
+                                  latent_nodes = NULL, 
+                                  keep_nodes = NULL) {
     
     ig <- as.igraph(g)
     all_nodes <- igraph::V(ig)$name
     
-    include_nodes <- setdiff(all_nodes, latent_nodes)
+    if (is.null(keep_nodes)) {
+        include_nodes <- setdiff(all_nodes, latent_nodes)
+    } else {
+        include_nodes <- intersect(all_nodes, keep_nodes)
+    }
     latent_nodes <- setdiff(all_nodes, include_nodes)
     
     if (length(latent_nodes) == 0) {
@@ -945,15 +1205,22 @@ gcm_latent_projection <- function(g, latent_nodes) {
             filter(from != to,
                    !edge_exists(ig_proj, from, to))
         
-        new_edges <- bind_rows(causal_edges, confound_edges)
+        new_edges <- bind_rows(causal_edges |> 
+                                   mutate(path_type = "causal"), 
+                               confound_edges |> 
+                                   mutate(path_type = "confound"))
         
         if (nrow(new_edges) > 0) {
             ig_proj <- igraph::add_edges(
                 ig_proj,
-                as.vector(rbind(new_edges$from, new_edges$to))
+                as.vector(rbind(new_edges$from, new_edges$to)),
+                attr = list(path_type = new_edges$path_type)
             )
         }
     }
+    
+    if (any(duplicated(t(apply(as.matrix(gcm_edgelist(g)), 1, sort)))))
+        stop("graph contains reciprocal edges — not a DAG")
     
     igraph::delete_vertices(ig_proj, latent_nodes) |> 
         as_tbl_graph()
