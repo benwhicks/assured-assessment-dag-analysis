@@ -4245,7 +4245,7 @@ dend_main <-
     set("by_labels_branches_lty",
         value = lab[is_D], TF_values = c(2,1)) 
 
-dend_M2436 <- L012_hclust_M2436 |> 
+dend_M23467 <- L012_hclust_M23467 |> 
     as.dendrogram() |> 
     set("by_labels_branches_lty",
         value = lab[is_D], TF_values = c(2,1)) 
@@ -4273,10 +4273,9 @@ nump <- as.integer(sub("^\\D+", "", labp))
 palp  <- setNames(leaf_cols, 1:8)
 labels_colors(dend_perfect) <- palp[as.character(nump)]
 
-L_hclust_perfect_learn_M2436 <- hclust(
+L_hclust_perfect_learn_M23467 <- hclust(
     as.dist(
-        d_mat[idsM2436, 
-              idsM2436]), 
+        d_mat[cp8(c(2,3,4,6,7)), cp8(c(2,3,4,6,7))]), 
     method = "complete")
 
 tanglegram(dend1 = dend_perfect,
@@ -4290,11 +4289,11 @@ tanglegram(dend1 = dend_perfect,
            )
 ```
 
-Tanglegrams of each CDAG grouping
+Tanglegrams of the large cluster: 
 
 ``` {r}
-tanglegram(dend1 = as.dendrogram(L_hclust_perfect_learn_M2436),
-           dend2 = dend_M2436,
+tanglegram(dend1 = as.dendrogram(L_hclust_perfect_learn_M23467),
+           dend2 = dend_M23467,
            main_left = "Target learning", main_right = "L-Consistency",
            sort = TRUE, edge.lwd = 3, lwd = 2,
            common_subtrees_color_lines = TRUE, 
