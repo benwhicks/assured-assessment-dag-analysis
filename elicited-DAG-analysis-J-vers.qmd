@@ -26,12 +26,8 @@ export_and_save_every_model <- FALSE
 
 # TODO
 
-## Check new L-dissimilarities are used in vignette 
-
 ## Check new definitions throughout:
 
-- L-diss is L0+L1+L2
-- Clust method = average
 - CHange language to projections in notation and definitions
 - Check references for projection validity of L1, L2 theorems.
 - Check degradation algorithm actually matches new definition of checking for no contradictions or whatever it was I changed it to
@@ -187,12 +183,17 @@ $V_i \sim_{\varphi} V_{i'},V_j \sim_{\varphi} V_{j'}$.
 
 # Theory: Causal consistency between models
 
+Good paper on projections and presevation of causal quantities under them: https://www-sciencedirect-com.ezproxy.lib.uts.edu.au/science/article/pii/S0888613X24000951 
+
+
+
 ## Metrics, semimetrics, pseudometrics, dissimilarities
 
 Supposing we have some function $\operatorname{d}(x,y) \rightarrow R$
 
 - **Dissimilarities** are non-negative, symmetric, and zero on the diagonal. This is good enough for things like `hclust`. 
 - If we add the triangle inequality, we have a **pseudometric**.
+- If we add the ...
 
 
 
@@ -576,7 +577,7 @@ L1_dist <- partial(
     max_cond = 5)
 L2_dist <- partial(
     L2_distance_via_latent_projection,
-    adj_type = "optimal")
+    adj_type = "all")
 ```
 
 # Vignettes
