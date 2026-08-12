@@ -381,7 +381,8 @@ gcm_L0_consistency <- function(gX, gY) {
 
 # ---- 1. Fingerprint: CI claims over a vocabulary --------------------
 
-gcm_ci_fingerprint <- function(g, vocab = NULL, max_cond = Inf) {
+gcm_ci_fingerprint <- function(g, vocab = NULL, max_cond = Inf,
+                               z_as_list = FALSE) {
     # Enumerates x _||_ y | Z for unordered pairs {x, y} in vocab and
     # ALL Z subseteq vocab \ {x, y} (up to max_cond). Evaluated by
     # d-separation on the FULL graph, so with vocab = shared this is
@@ -400,16 +401,27 @@ gcm_ci_fingerprint <- function(g, vocab = NULL, max_cond = Inf) {
             else combn(rest, k, simplify = FALSE)
             for (Z in Zs) {
                 if (dseparated(g, p[1], p[2], Z)) {
-                    rows[[length(rows) + 1]] <- tibble(
-                        x = p[1], y = p[2],
-                        # It is critical that Z is sorted here!!!
-                        Z = paste(sort(Z), collapse = ","))
+                    if (z_as_list) {
+                        rows[[length(rows) + 1]] <- tibble(
+                            x = p[1], y = p[2],
+                            # It is critical that Z is sorted here!!!
+                            Z = list(sort(Z)))
+                    } else {
+                        rows[[length(rows) + 1]] <- tibble(
+                            x = p[1], y = p[2],
+                            # It is critical that Z is sorted here!!!
+                            Z = paste(sort(Z), collapse = ","))
+                    }
                 }
             }
         }
     }
     if (length(rows) == 0) {
-        tibble(x = character(), y = character(), Z = character())
+        if (z_as_list) {
+            tibble(x = character(), y = character(), Z = list())
+        } else {
+            tibble(x = character(), y = character(), Z = character())
+        }
     } else bind_rows(rows)
 }
 
@@ -512,82 +524,11 @@ gcm_L1_consistency <- function(gX, gY, max_cond = Inf,
     )
 }
 
-# ---- 4. Degradation wrapper: one graph and its quotient --------------
-
-gcm_cluster_L1_degradation <- function(g, .f, max_cond = Inf) {
-    # Commuting square at L1. One enumeration loop answers every
-    # cluster-level query (A, B, Z subseteq clusters) twice:
-    #   fine   : SET-level d-separation of members in the fine graph
-    #            (the lifted query -- the audit's fine_indep column)
-    #   coarse : d-separation in the quotient
-    # The two claim tables then feed the SAME scorer as the pairwise
-    # comparison. This supersedes the audit + ci_loss pair while
-    # reproducing both (the audit table is returned unchanged).
-    if (inherits(g, "dagitty")) g <- dagitty_to_tidygraph(g)
-    gd  <- tidygraph_to_dagitty(g)
-    mem <- gcm_cluster_memberships(g, .f)
-    qd  <- tidygraph_to_dagitty(gcm_cluster_graph(g, .f))
-    cl  <- sort(names(mem))
-    
-    rows <- list()
-    pairs <- combn(cl, 2, simplify = FALSE)
-    for (p in pairs) {
-        rest <- setdiff(cl, p)
-        for (k in 0:min(max_cond, length(rest))) {
-            Zs <- if (k == 0) list(character(0))
-            else combn(rest, k, simplify = FALSE)
-            for (Z in Zs) {
-                fine   <- dseparated(gd, mem[[p[1]]], mem[[p[2]]],
-                                     unlist(mem[Z], use.names = FALSE))
-                coarse <- dseparated(qd, p[1], p[2], Z)
-                rows[[length(rows) + 1]] <- tibble(
-                    x = p[1], y = p[2],
-                    Z = paste(sort(Z), collapse = ","),
-                    fine_indep = fine, coarse_indep = coarse)
-            }
-        }
-    }
-    audit <- bind_rows(rows) |>
-        mutate(status = case_when(
-            coarse_indep  & fine_indep  ~ "agree_indep",
-            !coarse_indep & !fine_indep ~ "agree_dep",
-            !coarse_indep & fine_indep  ~ "lost",
-            coarse_indep  & !fine_indep ~ "VIOLATION"))
-    
-    fp_fine   <- audit |> filter(fine_indep)   |> select(x, y, Z)
-    fp_coarse <- audit |> filter(coarse_indep) |> select(x, y, Z)
-    
-    s_fc <- L1_score_direction(fp_fine, fp_coarse)   # fine -> coarse
-    s_cf <- L1_score_direction(fp_coarse, fp_fine)   # coarse -> fine
-    
-    # Theorem checks (soundness): both must hold
-    stopifnot(!any(audit$status == "VIOLATION"))
-    stopifnot(is.na(s_cf$d) || s_cf$d == 0)
-    
-    list(
-        # graded L1 degradation: share of the fine model's cluster-
-        # resolution independence claims the quotient loses
-        d_degradation = s_fc$d,
-        n_fine_claims = s_fc$n_claims,
-        n_lost        = s_fc$n_lost,
-        lost_claims   = s_fc$lost,
-        # legacy statistic (all-queries denominator), for continuity:
-        ci_loss_all_queries = mean(audit$status == "lost"),
-        audit = audit
-    )
-}
-
-
-
-
-
-
-
 
 # ---- 1. Adjustment set for one pair --------------------------------
 
 gcm_adj_set <- function(g, exposure, outcome,
-                        adj_type = c("optimal", "canonical")) {
+                        adj_type = c("all" ,"optimal", "canonical")) {
     # Returns: NULL           -> not identifiable by adjustment
     #          character(0)   -> identifiable, empty set
     #          <chr vector>   -> identifiable, the set
@@ -598,6 +539,8 @@ gcm_adj_set <- function(g, exposure, outcome,
     s <- switch(adj_type,
                 canonical = adjustmentSets(g, exposure, outcome,
                                            type = "canonical"),
+                all = adjustmentSets(g, exposure, outcome,
+                                           type = "all"),
                 optimal   = gcm_optimal_adjustment_set(g, exposure, outcome))
     if (length(s) == 0) return(NULL)
     sort(as.character(unname(unlist(s))))
@@ -606,7 +549,7 @@ gcm_adj_set <- function(g, exposure, outcome,
 # ---- 2. Per-graph fingerprint ---------------------------------------
 
 gcm_adj_fingerprint <- function(g, pairs = NULL,
-                                adj_type = c("optimal", "canonical")) {
+                                adj_type = c("all" ,"optimal", "canonical")) {
     # tibble: x, y, z (list of sets/NULLs), id, causal
     # `causal` = x is an ancestor of y in THIS graph
     adj_type <- match.arg(adj_type)
@@ -619,8 +562,8 @@ gcm_adj_fingerprint <- function(g, pairs = NULL,
     
     pairs |>
         mutate(
-            z      = map2(x, y, \(x, y) gcm_adj_set(g, x, y, adj_type)),
-            id     = !map_lgl(z, is.null),
+            Z      = map2(x, y, \(x, y) gcm_adj_set(g, x, y, adj_type)),
+            id     = !map_lgl(Z, is.null),
             causal = map2_lgl(x, y, \(x, y) x %in% an[[y]])
         )
 }
@@ -813,14 +756,15 @@ gcm_L2_consistency <- function(gX, gY,
 #     }
 # }
 
-L1_distance_via_latent_projection <- function(gX, gY, return_list = FALSE) {
+L1_distance_via_latent_projection <- function(gX, gY, return_list = FALSE,
+                                              max_cond = Inf) {
     S <- intersect(gcm_nodelist(gX),gcm_nodelist(gY)) |> pull(name)
     
     gXproj <- gcm_latent_projection(gX, keep_nodes = S)
     gYproj <- gcm_latent_projection(gY, keep_nodes = S)
     
-    fpX <- gcm_ci_fingerprint(gXproj)
-    fpY <- gcm_ci_fingerprint(gYproj)
+    fpX <- gcm_ci_fingerprint(gXproj, max_cond = max_cond)
+    fpY <- gcm_ci_fingerprint(gYproj, max_cond = max_cond)
     
     gamma_diff <- dplyr::symdiff(fpX, fpY)
     gamma_union <- dplyr::union(fpX, fpY)
@@ -840,14 +784,15 @@ L1_distance_via_latent_projection <- function(gX, gY, return_list = FALSE) {
     }
 }
 
-L2_distance_via_latent_projection <- function(gX, gY, return_list = FALSE) {
+L2_distance_via_latent_projection <- function(gX, gY, return_list = FALSE,
+                                              adj_type = "optimal") {
     S <- intersect(gcm_nodelist(gX),gcm_nodelist(gY)) |> pull(name)
     
     gXproj <- gcm_latent_projection(gX, keep_nodes = S)
     gYproj <- gcm_latent_projection(gY, keep_nodes = S)
     
-    fpX <- gcm_adj_fingerprint(gXproj)
-    fpY <- gcm_adj_fingerprint(gYproj)
+    fpX <- gcm_adj_fingerprint(gXproj, adj_type = adj_type)
+    fpY <- gcm_adj_fingerprint(gYproj, adj_type = adj_type)
     
     gamma_diff <- dplyr::symdiff(fpX, fpY)
     gamma_union <- dplyr::union(fpX, fpY)
@@ -1044,7 +989,7 @@ gcm_cluster_adj_fingerprint <- function(g, .f, pairs = NULL, map_sets = TRUE,
     
     pairs |>
         mutate(
-            z = map2(x, y, \(x, y) {
+            Z = map2(x, y, \(x, y) {
                 s <- tryCatch(
                     adjustmentSets(gd,
                                    exposure = mem[[x]],
@@ -1056,76 +1001,96 @@ gcm_cluster_adj_fingerprint <- function(g, .f, pairs = NULL, map_sets = TRUE,
                 out <- sort(as.character(unname(unlist(s))))
                 if (map_sets) sort(unique(.f(out))) else out
             }),
-            id = !map_lgl(z, is.null),
+            id = !map_lgl(Z, is.null),
             causal = map2_lgl(x, y, \(x, y)
                               any(mem[[x]] %in% unlist(an[mem[[y]]])))
         )
 }
 
-# ---- Degradation wrapper ---------------------------------------------
 
-gcm_cluster_L2_degradation <- function(g, .f,
-                                       causal_pairs_only = FALSE,
-                                       check_soundness = TRUE) {
+gcm_cluster_L1_degradation <- function(g, .f, noisy = TRUE, max_cond = Inf) {
+    if (inherits(g, "dagitty")) g <- dagitty_to_tidygraph(g)
+    
+    qd  <- gcm_cluster_graph(g, .f)
+    
+    fp_fine   <- gcm_ci_fingerprint(
+        g, 
+        z_as_list = TRUE, max_cond = max_cond)      
+    fp_fine_coarse_vocab <- # lifted claims
+        fp_fine |>
+        coarsen_vocab(.f = .f) |> 
+        filter(x != y) |>
+        rowwise() |> 
+        filter(!(x %in% Z)) |> 
+        filter(!(x %in% Z)) |> 
+        ungroup() |> 
+        distinct() 
+    
+    fp_coarse <- gcm_ci_fingerprint(
+        qd, z_as_list = TRUE, max_cond = max_cond) # coarse graph claims
+    
+    lost_claims <- dplyr::setdiff(fp_coarse, fp_fine_coarse_vocab)
+    all_claims <- dplyr::union(fp_fine_coarse_vocab, fp_coarse)
+    
+    degradation <- nrow(lost_claims) / nrow(all_claims)
+    if (noisy) message(str_c("L1 degradation of ", degradation, " computed."))
+    list(
+        degradation = degradation,
+        claims_in_coarse = fp_coarse,
+        claims_in_fine = fp_fine_coarse_vocab
+    )
+}
+
+coarsen_vocab <- function(d, .f, sep = ",") {
+    
+    .fl <- function(col) {
+        map_chr(str_split(col, sep), \(v)
+                v |> setdiff("") |> .f() |> unique() |> sort() |> str_c(collapse = sep))
+    }
+    
+    .fll <- function(col) {
+        map(col, \(v)
+            v |> as.character() |> .f() |> unique() |> sort())
+    }
+    
+    d |>
+        mutate(
+            across(where(is.character), .fl),
+            across(where(is.list),      .fll)
+        )
+}
+
+gcm_cluster_L2_degradation <- function(g, .f, noisy = TRUE,
+                                       adj_type = "all") {
     if (inherits(g, "dagitty")) g <- dagitty_to_tidygraph(g)
     
     qd  <- tidygraph_to_dagitty(gcm_cluster_graph(g, .f))
-    mem <- gcm_cluster_memberships(g, .f)
     
-    fp_fine   <- gcm_cluster_adj_fingerprint(g, .f)      # lifted claims
-    fp_coarse <- gcm_adj_fingerprint(qd)                 # quotient claims
+    fp_fine   <- gcm_adj_fingerprint(g, adj_type = adj_type) |>
+    filter(causal) |> select(-causal)# lifted claims
+    fp_coarse <- gcm_adj_fingerprint(qd, adj_type = adj_type) |>
+    filter(causal) |> select(-causal)# quotient claims
+    fp_fine_coarse_vocab <- fp_fine |> 
+        coarsen_vocab(.f = .f) |> 
+        filter( # exclude if x,y now merged
+            x != y) |> 
+        rowwise() |>
+        filter( # exclude if x now a member of z
+            !(x %in% Z)) |>
+        filter( # exclude if y now a member of z
+            !(y %in% Z)) |>
+        ungroup() |>
+        distinct()
     
-    # Reuse the pairwise orchestrator verbatim: both "graphs" live in
-    # cluster vocabulary, so passing qd twice yields shared = clusters.
-    out <- gcm_L2_consistency(qd, qd,
-                              causal_pairs_only = causal_pairs_only,
-                              fpX = fp_fine, fpY = fp_coarse,
-                              adj_type = "optimal")
+    lost_claims <- dplyr::setdiff(fp_fine_coarse_vocab, fp_coarse)
+    all_claims <- dplyr::union(fp_fine_coarse_vocab, fp_coarse)
     
-    # -- theorem checks (both should hold; failures indicate bugs) -----
-    # 1. coarse never identifies what fine cannot:
-    stopifnot(isTRUE(all.equal(out$rXY, 0)) || is.na(out$rXY))
-    # 2. semantic soundness of coarse recipes in the fine graph
-    #    (the old recipe_sound unit test, retained because the metric
-    #    itself compares set NAMES, not validity):
-    if (check_soundness) {
-        gd <- tidygraph_to_dagitty(g)
-        sound <- out$df |>
-            filter(idY) |>            # coarse-identifiable pairs
-            mutate(ok = pmap_lgl(list(x, y, zy_sh), \(x, y, Z)
-                                 isAdjustmentSet(gd, unlist(mem[unlist(Z)]),
-                                                 exposure = mem[[x]],
-                                                 outcome  = mem[[y]])))
-        if (!all(sound$ok))
-            warning("recipe_sound violated for pairs: ",
-                    paste(sound$x[!sound$ok], "->",
-                          sound$y[!sound$ok], collapse = "; "),
-                    " -- investigate before trusting the metric.")
-    }
-    
-    # for pull-back this needs to remain in the fine-graph domain (map_sets = FALSE)
-    fp_fine_raw <- gcm_cluster_adj_fingerprint(g, .f, map_sets = FALSE)
-    z_coarse_pb <- map(fp_coarse$z, \(Z)
-                       if (is.null(Z)) NULL else sort(unlist(mem[Z], use.names = FALSE)))
-    
-    s_pb <- L2_consistency_pairwise_score(fp_coarse$id, fp_fine_raw$id,
-                               z_coarse_pb, fp_fine_raw$z)
-    
+    degradation <- nrow(lost_claims) / nrow(all_claims)
+    if (noisy) message(str_c("L2 degradation of ", degradation, " computed."))
     list(
-        # graded degradation, fine -> coarse: how badly do the fine
-        # graph's cluster-level recipes fare under the quotient?
-        d_degradation = out$dXY,
-        d_degradation_pullback = s_pb$d,
-        # identifiability-loss rate = old ErrLostId, recovered from the
-        # confusion cells (contradiction cell / fine positives):
-        ErrLostId = with(out$df,
-                         if (sum(idX) > 0) sum(idX & !idY) / sum(idX) else NA_real_),
-        # reverse direction: how much does the quotient over-claim
-        # relative to fine? (graded only -- contradictions impossible)
-        d_coarse_to_fine = out$dYX,
-        df = out$df,
-        n_effective  = out$n_effective_XY,
-        total_weight = out$total_weight_XY
+        degradation = degradation,
+        claims_in_coarse = fp_coarse,
+        claims_in_fine = fp_fine
     )
 }
 
@@ -1168,7 +1133,8 @@ align_adjacency_matrices <- function(g1, g2, common = TRUE, nodes = NULL) {
 
 gcm_latent_projection <- function(g, 
                                   latent_nodes = NULL, 
-                                  keep_nodes = NULL) {
+                                  keep_nodes = NULL,
+                                  noisy = FALSE) {
     
     ig <- as.igraph(g)
     all_nodes <- igraph::V(ig)$name
@@ -1181,7 +1147,7 @@ gcm_latent_projection <- function(g,
     latent_nodes <- setdiff(all_nodes, include_nodes)
     
     if (length(latent_nodes) == 0) {
-        message("No latent nodes in graph, returning original graph")
+        if (noisy) message("No latent nodes in graph, returning original graph")
         return(g)
     }
     
@@ -1220,7 +1186,7 @@ gcm_latent_projection <- function(g,
     }
     
     if (any(duplicated(t(apply(as.matrix(gcm_edgelist(g)), 1, sort)))))
-        stop("graph contains reciprocal edges — not a DAG")
+        warning("graph contains reciprocal edges — not a DAG")
     
     igraph::delete_vertices(ig_proj, latent_nodes) |> 
         as_tbl_graph()

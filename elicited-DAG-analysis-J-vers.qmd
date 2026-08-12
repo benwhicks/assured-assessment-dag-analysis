@@ -19,7 +19,7 @@ editor:
 
 ```{r rendering-preferences}
 # Set to true if L metrics
-recalculate_distance_matrices <- TRUE
+recalculate_distance_matrices <- FALSE
 rerun_simulations <- FALSE
 export_and_save_every_model <- FALSE
 ```
@@ -284,12 +284,12 @@ statements between the models $\hat{\Gamma}_{i}$.
 A similar use of $\Gamma_{i}$ can be used to examine the possible loss
 of $\mathcal{L}_i$ claims under some coarsening of graph through the
 clustering of nodes. One way this can happen when the coarsening divides
-the adjustement sets of some pair of variables into different clusters.
+the adjustment sets of some pair of variables into different clusters.
 Informally this degradation measure counts the proportion of
 $\mathcal{L}_i$ claims in the CDAG that have no potential surrogate
 claim in the fine grained DAG. More formally, we define:
 
-$$\varphi\text{-}\operatorname{deg}_{\mathcal{L}_i}(G)=\frac{|\ \{ [\gamma]_{\varphi} \in \Gamma_{i}(\varphi G): \nexists \ \eta \in \Gamma_i(G) \text{ s.t. } \varphi(\eta) = [\gamma]_{\varphi} \}\ |}{|\Gamma_{i}(\varphi G)|}$$
+$$\varphi\text{-}\operatorname{deg}_{\mathcal{L}_i}(G)=\frac{|\ \{ [\gamma]_{\varphi} \in \Gamma_{i}(\varphi G): \nexists \ \eta \in \Gamma_i(G) \text{ s.t. } \varphi(\eta) = [\gamma]_{\varphi} \}\ |}{|\ \varphi\Gamma_{i}(G) \cup  \Gamma_{i}(\varphi G)  |}$$
 
 ## Causal $\mathcal{L}$-consistancy
 
@@ -380,6 +380,7 @@ x \in \operatorname{an}_{\mathcal{G}_X}(y) \cup
       \operatorname{an}_{\mathcal{G}_Y}(y),\ x \neq y \bigr\},$$
 
 $\mathcal{L}_i\text{-}\operatorname{d_{xy}}$
+
 
 ### Defining L2-discrepency
 
@@ -559,6 +560,25 @@ d_{X \to Y} =
      {\displaystyle\sum_{\mathcal{P}:\, \iota_X \geq \iota_Y}
       \max\bigl\{|\tilde{\mathbf{Z}}_X(x,y)|,\, 1\bigr\}}$$
 
+# Distance function definitions
+
+``` {r defining-distance-functions, echo = T}
+L0_dist <- function(m_i, m_j) {
+    vocab_i <- gcm_nodelist(m_i)
+    vocab_j <- gcm_nodelist(m_j)
+    diff <- dplyr::symdiff(vocab_i, vocab_j)
+    union <- dplyr::union(vocab_i, vocab_j)
+    return(nrow(diff) / nrow(union))
+}
+
+L1_dist <- partial(
+    L1_distance_via_latent_projection, 
+    max_cond = 5)
+L2_dist <- partial(
+    L2_distance_via_latent_projection,
+    adj_type = "optimal")
+```
+
 # Vignettes
 
 To articulate some of the theory and the new metrics.
@@ -642,10 +662,11 @@ plot_vnt_dag <- function(g) {
             arrow = arrow(length = unit(4, 'mm'), type = "closed"),
             start_cap = circle(6, 'mm'),
             end_cap = circle(6, 'mm')) +
-        geom_node_point(aes(label = name, colour = group), size = 6) +
+        geom_node_point(aes(colour = group), size = 6) +
         geom_node_text(aes(label = name), colour = "white", alpha = 0.9) +
-        scale_colour_manual(values = first_letter_pal,
-                              guide = "none") +
+        scale_colour_manual(
+            values = first_letter_pal,
+            guide = "none") +
         xlim(c(-0.1,2.1)) +
         ylim(c(-0.1,1.1)) +
         theme_graph()
@@ -664,58 +685,50 @@ vntPlotF1A <- plot_vnt_dag(vnt.tdags$Fine1a) +
              fill = "grey", linewidth = 1, colour = palette.colors()[[3]], linetype = 5, alpha = 0.2)
 
 vntPlotF1B <- plot_vnt_dag(vnt.tdags$Fine1b) +
-    annotate(geom = "rect", 
-             xmin = -0.05, xmax = 0.65, ymin = -0.1, ymax = 0.3, 
-             fill = "grey", linewidth = 1, colour = "black", linetype = 5, alpha = 0.2) 
+    annotate(
+        geom = "rect", 
+        xmin = -0.05, xmax = 0.65, ymin = -0.1, ymax = 0.3, 
+        fill = "grey", linewidth = 1, colour = "black", linetype = 5,
+        alpha = 0.2) 
 
 # Causal consistency between C1, C2
-d.L0.C1_C2 <-    gcm_L0_consistency(
+d.L0.C1_C2 <-    L0_dist(
     vnt.tdags$Cluster1, 
-    vnt.tdags$Cluster2)$d
-d.L1.C1_C2 <-    gcm_L1_consistency(
+    vnt.tdags$Cluster2)
+d.L1.C1_C2 <-    L1_dist(
     vnt.tdags$Cluster1, 
-    vnt.tdags$Cluster2)$dXY
-L2const.C1_C2 <- gcm_L2_consistency(
+    vnt.tdags$Cluster2)
+d.L2.C1_C2 <- L2_dist(
     vnt.tdags$Cluster1, 
-    vnt.tdags$Cluster2, 
-    adj_type = "optimal")
-d.L2.C1_C2 <- L2const.C1_C2$dXY
-r.L2.C1_C2 <- L2const.C1_C2$rXY
+    vnt.tdags$Cluster2)
 
 # Causal consistency between C1, C1W
-d.L0.C1_C1W <-    gcm_L0_consistency(
+d.L0.C1_C1W <-    L0_dist(
     vnt.tdags$Cluster1, 
-    vnt.tdags$Cluster1W)$d
-d.L1.C1_C1W <-     gcm_L1_consistency(
+    vnt.tdags$Cluster1W)
+d.L1.C1_C1W <-     L1_dist(
     vnt.tdags$Cluster1, 
-    vnt.tdags$Cluster1W)$dXY
-L2const.C1_C1W <-  gcm_L2_consistency(
+    vnt.tdags$Cluster1W)
+d.L2.C1_C1W <-  L2_dist(
     vnt.tdags$Cluster1, 
-    vnt.tdags$Cluster1W, 
-    adj_type = "optimal")
-d.L2.C1_C1W <- L2const.C1_C1W$dXY
-r.L2.C1_C1W <- L2const.C1_C1W$rXY
+    vnt.tdags$Cluster1W)
 
 # Causal consistency between C2, C1W for completeness - probably don't need to include
-d.L0.C2_C1W <-    gcm_L0_consistency(
+d.L0.C2_C1W <-    L0_dist(
     vnt.tdags$Cluster2, 
-    vnt.tdags$Cluster1W)$d
-d.L1.C2_C1W <-     gcm_L1_consistency(
+    vnt.tdags$Cluster1W)
+d.L1.C2_C1W <-    L1_dist(
     vnt.tdags$Cluster2, 
-    vnt.tdags$Cluster1W)$dXY
-L2const.C2_C1W <-  gcm_L2_consistency(
+    vnt.tdags$Cluster1W)
+d.L2.C2_C1W <- L2_dist(
     vnt.tdags$Cluster2, 
-    vnt.tdags$Cluster1W, 
-    adj_type = "optimal")
-d.L2.C2_C1W <- L2const.C2_C1W$dXY
-r.L2.C2_C1W <- L2const.C2_C1W$rXY
-
+    vnt.tdags$Cluster1W)
 
 # Causal degradation under coarsening map
-deg.L1.FA <- gcm_cluster_L1_degradation(vnt.tdags$Fine1a, first_letter_coarsen)$d_degradation
-deg.L1.FB <- gcm_cluster_L1_degradation(vnt.tdags$Fine1b, first_letter_coarsen)$d_degradation
-deg.L2.FA <- gcm_cluster_L2_degradation(vnt.tdags$Fine1a, first_letter_coarsen)$d_degradation
-deg.L2.FB <- gcm_cluster_L2_degradation(vnt.tdags$Fine1b, first_letter_coarsen)$d_degradation
+deg.L1.FA <- gcm_cluster_L1_degradation(vnt.tdags$Fine1a, first_letter_coarsen)$degradation
+deg.L1.FB <- gcm_cluster_L1_degradation(vnt.tdags$Fine1b, first_letter_coarsen)$degradation
+deg.L2.FA <- gcm_cluster_L2_degradation(vnt.tdags$Fine1a, first_letter_coarsen)$degradation
+deg.L2.FB <- gcm_cluster_L2_degradation(vnt.tdags$Fine1b, first_letter_coarsen)$degradation
 ```
 
 ## L-discrepencies
@@ -792,19 +805,19 @@ variables by their first letter.
 ```{r figure-L-degradation-vignette}
 (vntPlotF1A ) + 
     (vntPlotC1 + 
-        annotate("text", x = 1, y = 0.3, label = "Initial DAG\n(Cluster DAG)")) + 
+        annotate("text", x = 1, y = 0.3, label = "Cluster DAG")) + 
     (vntPlotF1B)
 ```
 
 Under this coarsening we see:
 
-- $^\mathcal{L_1}\operatorname{deg}_{\phi}(\mathcal{G}^{[x,z]})$ =
+- $\operatorname{deg}_{\mathcal{L_1}}^{\phi}(\mathcal{G}_{[x,z]})$ =
   `r deg.L1.FA`
-- $^\mathcal{L_2}\operatorname{deg}_{\phi}(\mathcal{G}^{[x,z]})$ =
+- $\operatorname{deg}_{\mathcal{L_2}}^{\phi}(\mathcal{G}_{[x,z]})$ =
   `r deg.L2.FA`
-- $^\mathcal{L_1}\operatorname{deg}_{\phi}(\mathcal{G}^{[x]})$ =
+- $\operatorname{deg}_{\mathcal{L_1}}^{\phi}(\mathcal{G}_{[x]})$ =
   `r deg.L1.FB`
-- $^\mathcal{L_2}\operatorname{deg}_{\phi}(\mathcal{G}^{[x]})$ =
+- $\operatorname{deg}_{\mathcal{L_2}}^{\phi}(\mathcal{G}_{[x]})$ =
   `r deg.L2.FB`
 
 Here we see that the only causal degradation is when we coarsen
@@ -816,36 +829,7 @@ $Z \rightarrow X_1 \leftarrow X_2 \rightarrow Y$ is open but non-causal.
 This disagreement cannot be reconciled when we form the cluster
 $[X]=\{X_1, X_2\}$ in the cluster DAG.
 
-```{r}
-expand_adj_set <- function(adj_set_vec) {
-    adj_set_string <- function(adj_set) {
-        if (is.null(adj_set)) {
-            return("Not identifiable")
-        } else if (length(adj_set) == 0) {
-            return("Identifiable without adjustment")
-        } else {
-            adj_string <- str_c(
-                "Identifiable with: ",
-                str_c(
-                    adj_set,
-                    collapse = "; "
-                )
-            )
-        }
-    }
-    map(adj_set_vec, adj_set_string) |> 
-        as.character()
-}
 
-gcm_cluster_L2_degradation(vnt.tdags$Fine1b, first_letter_coarsen)$df |>
-    mutate(
-        adj_set_fine_model = expand_adj_set(zx_sh),
-        adj_set_coarse_model = expand_adj_set(zy_sh)
-        ) |> 
-    select(x,y, starts_with("adj_set")) |> 
-    knitr::kable(caption = "Adjustment set degradation under coarsening of G[x,y]")
-
-```
 
 # Data import
 
@@ -1543,7 +1527,8 @@ clean_node_group_cluster_graph <- function(cdag) {
     if ("measurable" %in% names(cdag |> activate(nodes) |> as_tibble())) {
         dag_out <- 
             dag_out |> 
-            mutate(measurability_node_group = coarsen_node_measurability(measurable)) 
+            mutate(
+                measurability_node_group = coarsen_node_measurability(measurable)) 
     }
     
     dag_out |> 
@@ -2211,7 +2196,7 @@ plot_highlighted_coarse_graph <- function(model = 1, LEGEND_POSITION = "none",
 md_for_paper <- 5
 p_merged_highlighted_fine <- plot_highlighted_fine_graph(
     md_for_paper, 
-                                                         LEGEND_POSITION = "right")
+    LEGEND_POSITION = "right")
 p_merged_highlighted_coarse <- plot_highlighted_coarse_graph(
     md_for_paper, LEGEND_POSITION = "right")
 p_merged_highlighted_fine + ggtitle(str_c("Model  ",md_for_paper , ", original"))
@@ -2846,14 +2831,17 @@ consistency (CITE - Annan???)
 
 ```{r L1-degradation-of-clustering}
 # slow
-if (recalculate_distance_matrices) {
+if (FALSE) {
     clustering_L1_degradation <- 
         tdags |> 
         imap(
             \(g, m)
+            {
+            message(str_c(m, ":"))
             tibble(L1_degradation = gcm_cluster_L1_degradation(
-                g, code_node_group)$d_degradation
-            )) |> 
+                g, code_node_group,
+                max_cond = 2)$degradation
+            )}) |> 
         list_rbind(names_to = "Model")
     saveRDS(clustering_L1_degradation, "cache/L1-degradation.RDS")
 } else {
@@ -2877,13 +2865,19 @@ the coarsened cluster graph.
 
 ```{r L2-degradation-of-clustering}
 if (recalculate_distance_matrices) {
+    # adj_type = "all" for coverage, but slow
+    # adj_type = "optimal" for best efficient estimation
     clustering_L2_degradation <- 
         tdags |> 
         imap(
             \(g,m)
+            {
+            message(str_c(m, ":"))
             tibble(
-                L2_degradation = gcm_cluster_L2_degradation(g, code_node_group)$d_degradation
-            )) |> 
+                L2_degradation = gcm_cluster_L2_degradation(
+                    g, code_node_group,
+                    adj_type = "optimal")$degradation
+            )}) |> 
         list_rbind(names_to = "Model")
     saveRDS(clustering_L2_degradation, "cache/L2-degradation.RDS")
 } else {
@@ -3043,13 +3037,6 @@ scenario.
 ### L0 consistency between models
 
 ```{r L0-between-models-distances-as-matrix}
-L0_dist <- function(m_i, m_j) {
-    vocab_i <- gcm_nodelist(m_i)
-    vocab_j <- gcm_nodelist(m_j)
-    diff <- dplyr::symdiff(vocab_i, vocab_j)
-    union <- dplyr::union(vocab_i, vocab_j)
-    return(nrow(diff) / nrow(union))
-}
 
 if (recalculate_distance_matrices) {
     L0_between_model_dist_matrix <- 
@@ -3070,8 +3057,9 @@ if (recalculate_distance_matrices) {
 
 if (recalculate_distance_matrices) {
     L1_between_model_dist_matrix <- 
-        compute_dist_matrix(CDAGs_node_group,
-                            .df = L1_distance_via_latent_projection)
+        compute_dist_matrix(
+            CDAGs_node_group,
+            .df = L1_dist)
     saveRDS(L1_between_model_dist_matrix, "cache/L1_models_dist_matrix.RDS")
 } else {
     L1_between_model_dist_matrix <- readRDS("cache/L1_models_dist_matrix.RDS")
@@ -3086,7 +3074,7 @@ if (recalculate_distance_matrices) {
     L2_between_model_dist_matrix <- 
         compute_dist_matrix(
             CDAGs_node_group,
-            L2_dist_via_projection
+            .df = L2_dist
         )
     
     saveRDS(L2_between_model_dist_matrix, "cache/L2_models_dist_matrix.RDS")
@@ -3199,7 +3187,8 @@ ng_counts <-
     all_node_groups_aggregated_metrics |> 
     count(node_group)
 
-gcm_latent_projection_merge <- function(model_list, shared_nodes = NULL) {
+gcm_latent_projection_merge <- function(model_list, shared_nodes = NULL,
+                                        additional_nodes = NULL) {
     # merges the latent projection of a list of models
     # each model is projected onto the shared set of nodes, 
     # with the other nodes being treated as latent
@@ -3212,6 +3201,9 @@ gcm_latent_projection_merge <- function(model_list, shared_nodes = NULL) {
                     pull(name) 
             ) |> 
             reduce(intersect)
+        if (!is.null(additional_nodes)) {
+            shared_nodes <- union(shared_nodes, additional_nodes)
+        }
     }
     
     merged_projections <- 
@@ -3242,16 +3234,18 @@ of their latent projections using their shared node group clusters.
 ```{r plot-merged-latent-projections-of-similar-cluster-dags}
 plot_latent_clusters_merged <- function(indexes, 
                                         nl = NULL,
+                                        additional_nodes = NULL,
                                         ...) {
     CDAG.projection <- 
         CDAGs_node_group[indexes] |> 
-    gcm_latent_projection_merge(shared_nodes = nl) 
+        gcm_latent_projection_merge(shared_nodes = nl,
+                                    additional_nodes = additional_nodes) 
     
     CDAG.projection |> 
         g_plot_coarse(...) +
         ggtitle(str_c(
             "Merged latent projections of: ",  
-        str_c("M", indexes, collapse = ", "))) 
+            str_c("M", indexes, collapse = ", "))) 
 }
 
 most_common_ngs <- all_node_groups_aggregated_metrics |> 
@@ -3259,10 +3253,16 @@ most_common_ngs <- all_node_groups_aggregated_metrics |>
     filter(n > 2) |> 
     pull(node_group)
 
-M2436_col <- "#CC79A7"
-M15_col <- "#D55E00"
-M7_col <- "#009E73"
-M8_col <- "#56B4E9"
+# grp all help
+M234_col <- "#CC79A7" # Focused on a range of help, general confounding from all AI help
+
+# group misuse
+M67_col <- "#009E73" # AI misuse, driven by decisions, confounded by other AI help
+# group metacog
+M15_col <- "#D55E00" # More focused on student emotion / engagement and metacognition
+
+# group redesign
+M8_col <- "#56B4E9" # qualitatively different
 ```
 
 # Latent projections of CDAGs
@@ -3276,85 +3276,79 @@ plot_latent_clusters_merged(1:8, label = T)
 Assisted by the clustering there is a natural way to partition the
 models:
 
-- M7 ??
-- M8 ??
-- M2436
-- M15: Student motivation key confound between knowledge, metacognition, and assessment. Might need to add in misuse of AI
+- `MetCog` models M15: Student motivation key confound between knowledge, metacognition, and assessment. Might need to add in misuse of AI
+- `ReDesign` model M8: A different kind of learning system - assessment mediated through a range of process based measures. Resilient to AI influence. 
+- `AllHelp` models M234: Focused on a range of help and the general confounding of assessment measures through all help, including AI
+- `MisUse` models M67: Targeted AI misuse, and the decisions that drive that choice. 
 
-- Those that had a greater focus on other kinds of help (M1, M3, M6)
-- Those that did examine the misuse of AI, and within those:
-  - Those that mediated effects through student metacognition
-    capabilities (M5, M8)
-  - Those that did not (M2,M4,M6,M7)
+## Projection of MetaCog model groups
 
-## Latent projection of no-misuse cluster: M1, M3
-
-Key here is they did not examine misuse of AI.
-
-```{r}
-node_counts_M136 <- gcm_nodelist(CDAGs_node_group$M1) |> 
-    bind_rows(gcm_nodelist(CDAGs_node_group$M3)) |> 
-    bind_rows(gcm_nodelist(CDAGs_node_group$M6)) |> 
-    count(name, sort = T)
-
-nl_m136 <- c(
-        # Common in all
-        "CD.Str", "Grade", "LD.Task", "S.Kn",
-        # In 2 and distinguishing this cluster from others
-        "T.Cp",
-        "S.Act",
-        "H.Gen",
-        "H.AI.good",
-         "H.AI.evil"
-        )
+```{r eval = T}
 
 plot_latent_clusters_merged(
-    c(1,3,6), label = T, 
-    # nl = node_counts_M136 |> 
-    #     filter(n > 1) |> 
-    #     pull(name))
-    nl = nl_m136)
-p_cdag_c1 <- plot_latent_clusters_merged(
-    c(1,3,6), , 
-    nl = nl_m136) + ggtitle("") +
+    c(1,5), label = T, additional_nodes = "H.AI.evil")
+p_cdag_metacog <- plot_latent_clusters_merged(
+    c(1,5), additional_nodes = "H.AI.evil") + ggtitle("") +
     coord_equal()+
-    theme(panel.border = element_rect(colour = M136_col, fill = NA, linewidth = 1))
+    theme(panel.border = element_rect(colour = M15_col, fill = NA, linewidth = 1))
 ggsave(
-    "figures/minifig--CDAG-clust-1.png", 
-    plot = p_cdag_c1,
+    "figures/minifig--CDAG-proj-MetaCog.png", 
+    plot = p_cdag_metacog,
     width = 4, height = 4,
     units = "in")
 ```
 
-## Latent projection of main cluster: M2, M3, M4, M6
+## Projection of ReDesign model
+
+```{r eval = T}
+
+plot_latent_clusters_merged(
+    c(8), label = T)
+p_cdag_redesign <- plot_latent_clusters_merged(
+    c(8)) + ggtitle("") +
+    coord_equal()+
+    theme(panel.border = element_rect(colour = M8_col, fill = NA, linewidth = 1))
+ggsave(
+    "figures/minifig--CDAG-proj-ReDesign.png", 
+    plot = p_cdag_redesign,
+    width = 4, height = 4,
+    units = "in")
+```
+
+## Projection of All Help model groups
 
 ```{r}
-plot_latent_clusters_merged(c(2,3, 4,6), label = T) 
-p_cdag_gc2 <- plot_latent_clusters_merged(c(2,3, 4,6))  + ggtitle("")+
-    coord_equal() +
-    theme(panel.border = element_rect(colour = M247_col, fill = NA, linewidth = 1))
-ggsave(
-    "figures/minifig--CDAG-clust-2.png", 
-    plot = p_cdag_gc2,
-    width = 4, height = 4,
-    units = "in")
-```
 
-### Latent projection of metacognition cluster: M5, M8
-
-```{r}
-# L12 cluster of cluster DAGs
-# In cluster strength order
-plot_latent_clusters_merged(c(5,8), label = T)
-p_cdag_gc3 <- plot_latent_clusters_merged(c(5, 8))  + ggtitle("")+
+plot_latent_clusters_merged(
+    c(2,3,4), label = T, additional_nodes = "H.AI.evil")
+p_cdag_allhelp <- plot_latent_clusters_merged(
+    c(2,3,4), additional_nodes = "H.AI.evil") + ggtitle("") +
     coord_equal()+
-    theme(panel.border = element_rect(colour = M58_col, fill = NA, linewidth = 1))
+    theme(panel.border = element_rect(colour = M234_col, fill = NA, linewidth = 1))
 ggsave(
-    "figures/minifig--CDAG-clust-3.png", 
-    plot = p_cdag_gc3,
+    "figures/minifig--CDAG-proj-AllHelp.png", 
+    plot = p_cdag_allhelp,
     width = 4, height = 4,
     units = "in")
 ```
+
+## Projection of MisUse model groups
+
+```{r eval = T}
+
+plot_latent_clusters_merged(
+    c(6,7), label = T, additional_nodes = "H.AI.evil")
+p_cdag_misuse <- plot_latent_clusters_merged(
+    c(6,7), additional_nodes = "H.AI.evil") + ggtitle("") +
+    coord_equal()+
+    theme(panel.border = element_rect(colour = M67_col, fill = NA, linewidth = 1))
+ggsave(
+    "figures/minifig--CDAG-proj-MetaCog.png", 
+    plot = p_cdag_misuse,
+    width = 4, height = 4,
+    units = "in")
+```
+
 
 # Simulation
 
@@ -4043,7 +4037,7 @@ pcomp_m8$p_orig / pcomp_m8$p_o +
 
 ```
 
-## Distances between the simulations and the originals
+# Dissimilarity between all models
 
 ```{r combining-all-expert-and-learned-CDAGs}
 learned_CDAGs <- 
@@ -4065,113 +4059,56 @@ all_CDAGs <-
 ```{r L0-between-all-CDAGs}
 if (recalculate_distance_matrices) {
     all_L0_dist_matrix <- 
-        compute_dist_matrix(all_CDAGs, L0_dist, symmetric = TRUE)$D
+        compute_dist_matrix(all_CDAGs, L0_dist, symmetric = TRUE)
     saveRDS(all_L0_dist_matrix, "cache/all_L0_dist_matrix.RDS")
 } else {
     all_L0_dist_matrix <- readRDS("cache/all_L0_dist_matrix.RDS")
 }
 
-L0_hclust_all <- cluster_gcms_from_dist_matrix(all_L0_dist_matrix)
-
-plots_L0_similarities_full <- plotting_Ln_distance_clustering(
-    L0_hclust_all, all_L0_dist_matrix,
-    level_label = "L0")
-
 ```
 
 ```{r L1-between-all-CDAGs}
 if (recalculate_distance_matrices) {
-    # L1 fingerprints
-    all_L1_fingerprints <- all_CDAGs |> 
-        map(gcm_ci_fingerprint)
-    saveRDS(all_L1_fingerprints, 
-            "cache/all_L1_fingerprints.RDS")
     # Dist matrix
     all_L1_dist_matrix <- 
         compute_dist_matrix(
             all_CDAGs, 
-            .df = L1_distance_via_latent_projection)
+            .df = L1_dist)
     saveRDS(all_L1_dist_matrix, 
             "cache/all_L1_dist_matrix.RDS")
 } else {
-    all_L1_fingerprints <- readRDS("cache/all_L1_fingerprints.RDS")
     all_L1_dist_matrix <- readRDS("cache/all_L1_dist_matrix.RDS")
 }
 
-L1_hclust_all <- hclust(
-    as.dist(all_L1_dist_matrix |> 
-        matrix_fill_NAs_with_colmean()),
-    method = "ward.D2")
-
-plots_L1_similarities_full <- plotting_Ln_distance_clustering(
-    L1_hclust_all, 
-    all_L1_dist_matrix,
-    level_label = "L1")
-
 ```
 
-### Informal consistency
 
-Replicate the above, but between the ground truth and the learned DAG.
-
-### L0 consistency between models
-
-```{r}
-plots_L0_similarities_full$combined.plot
-```
-
-### L1 consistency between models
-
-Includes the models, $M_k$ and their corresponding DAG learned from
-data, $D_k$
-
-```{r}
-plots_L1_similarities_full$combined.plot
-```
-
-### L2 consistency between models
-
-```{r}
+```{r L2-between-all-CDAGs}
 # L2 distance between two models
 if (recalculate_distance_matrices) {
-    # L1 fingerprints
-    all_L2_fingerprints <- all_CDAGs |> 
-        map(gcm_adj_fingerprint)
-    saveRDS(all_L2_fingerprints, 
-            "cache/all_L2_fingerprints.RDS")
     # Dist matrix
     all_L2_dist_matrix <- 
         compute_dist_matrix(
             all_CDAGs,
-            L2_distance_via_latent_projection,
+            L2_dist,
             symmetric = TRUE)
     saveRDS(all_L2_dist_matrix, 
             "cache/all_L2_dist_matrix.RDS")
 } else {
-    all_L2_fingerprints <- readRDS("cache/all_L2_fingerprints.RDS")
     all_L2_dist_matrix <- readRDS("cache/all_L2_dist_matrix.RDS")
 }
 ```
 
-```{r}
-L2_hclust_all <- hclust(
-    as.dist(fill_matrix_NAs_with_colmean(all_L2_dist_matrix)),
-    method = "ward.D2")
-
-plots_L2_similarities_full <- plotting_Ln_distance_clustering(
-    L2_hclust_all, 
-    all_L2_dist_matrix,
-    level_label = "L2"
-)
-
-plots_L2_similarities_full$combined.plot +
-    ggtitle("L2-distance clustering across all models")
-```
-
-### Ensemble clustering and comparisons
+## L1, L2 clustering deviations
 
 ```{r}
 library(viridis)
+
+L1_hclust_all <- hclust(as.dist(all_L1_dist_matrix),
+                        method = "average")
+L2_hclust_all <- hclust(as.dist(all_L2_dist_matrix),
+                        method = "average")
+
 dend_L12_all <- dendlist(
     L1_hclust_all |> as.dendrogram() |> highlight_branches_col(rev(mako(100))[5:100]),
     L2_hclust_all |> as.dendrogram() |> highlight_branches_col(rev(magma(100))[9:100])
@@ -4184,19 +4121,19 @@ tanglegram(dend_L12_all, main_left = "L1-consistency", main_right = "L2-consiste
 
 ```
 
-### Averaged L0, L1, L2 similarity between all models
+## Averaged L-distance between all models
 
-#### Figure -- L-distance clustering across all models
+### Figure -- L-distance clustering across all models
 
 ```{r L012-dist-clusters-across-all}
 
-imputed_L1 <- all_L1_dist_matrix |> 
-    matrix_fill_NAs_with_colmean()
-imputed_L2 <- all_L2_dist_matrix |> 
-    matrix_fill_NAs_with_colmean()
+# imputed_L1 <- all_L1_dist_matrix |> 
+#     matrix_fill_NAs_with_colmean()
+# imputed_L2 <- all_L2_dist_matrix |> 
+#     matrix_fill_NAs_with_colmean()
 
 all_L012_dist_matrix <- 
-    (all_L0_dist_matrix + imputed_L1 + imputed_L2) / 3
+    (all_L0_dist_matrix + all_L1_dist_matrix + all_L2_dist_matrix) / 3
 
 # all_L012_dist_matrix <- 
 #     (imputed_L1 + imputed_L2) / 2
@@ -4205,12 +4142,15 @@ all_L012_dist_matrix <-
 # M247
 # M58
 
-idsM2436 <- c(2,4,3,6,10,12,11,14)
-idsM136 <- c(1,3,6,9,11,14)
-idsM58 <- c(5,8,13,16)
+cp8 <- function(ids) {
+    c(ids, ids + 8)
+}
 
-L012_D_matrix_M2436 <- 
-    all_L012_dist_matrix[idsM2436, idsM2436]
+L012_D_matrix_M234 <- 
+    all_L012_dist_matrix[cp8(c(2,3,4)), cp8(c(2,3,4))]
+
+L012_D_matrix_M23467 <- 
+    all_L012_dist_matrix[cp8(c(2,3,4,6,7)), cp8(c(2,3,4,6,7))]
 
 
 L012_hclust_full <- hclust(
@@ -4218,10 +4158,16 @@ L012_hclust_full <- hclust(
     method = "average"
     )
 # Splitting first into similar model groups
-L012_hclust_M2436 <- 
-    hclust(as.dist(L012_D_matrix_M2436),
+L012_hclust_M23467 <- 
+    hclust(as.dist(L012_D_matrix_M23467),
            method = "average")
+# Splitting first into similar model groups
+L012_hclust_M234 <- 
+    hclust(as.dist(L012_D_matrix_M234),
+           method = "average")
+```
 
+``` {r dendo-full}
 dend <- 
     L012_hclust_full |> 
     as.dendrogram() 
@@ -4247,9 +4193,16 @@ dend |>
 
 ```
 
+When do the data derived models get separated from their model?
+
+- First partition: M2, M3, M4 separated.
+- Second partition: M8 separated.
+- Third partition: M1
+
+
 ``` {r}
 dend2 <- 
-    L012_hclust_M2436 |> 
+    L012_hclust_M23467 |> 
     as.dendrogram() 
 
 lab  <- labels(dend2)
@@ -4273,11 +4226,6 @@ dend2 |>
 ```
 
 
-When do the data derived models get separated from their model?
-
-- First partition: M2, M3, M4 separated.
-- Second partition: M8 separated.
-- Third partition: M1
 
 To look at between distances we examine:
 
