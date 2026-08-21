@@ -28,10 +28,6 @@ export_and_save_every_model <- FALSE
 
 ## Check new definitions throughout:
 
-- CHange language to projections in notation and definitions
-- Check references for projection validity of L1, L2 theorems.
-- Check degradation algorithm actually matches new definition of checking for no contradictions or whatever it was I changed it to
-
 
 ## Change L2 cluster degradation to use optimal adjustment set as well
 
@@ -67,13 +63,8 @@ library(dagitty)
 library(tidygraph)
 library(scales)
 library(patchwork)
-# library(ggsci) # drop??
-# library(ggokabeito) # drop??
 library(ggdist)
 library(ggraph)
-
-# library(ggpubfigs)
-#library(cowplot)
 ```
 
 ```{r helper-function}
@@ -158,64 +149,41 @@ The paper above with the snip from uses a hard (fix a value)
 intervention and a soft (fix a set of values) / stochastic intervention
 with $\mathcal{I}_X$.
 
-# Theory: Graph coarsening
-
-Given a (fine-grained) DAG with graph $G$ we may describe a cluster DAG
-(CDAG) by merging some nodes together into clusters. This new
-(coarse-grained) DAG will be $G^C$ and edges are formed by including
-edges between clusters if there existed edges between nodes in those
-clusters in the fine-grained DAG. A node $V_i$ in the fine grained model
-$G$ is now clustered into a higher level cluster node, $[V_i]$, in the
-CDAG $G^C$. More formally, we describe a coarsening map
-$\varphi:\mathbf{V}_G \rightarrow \mathbf{V}_{G^C}$ so that
-$\varphi(G)=\varphi G=G^{C}$. The coarsening function $\varphi$ induces
-an equivalence relation $\sim _\varphi$ on the nodes of $\mathbf{V}_{G}$
-where $V_i \sim_\varphi V_j$ iff $\varphi (V_i) = \varphi (V_j)$, i.e.
-both nodes map to the same cluster under the coarsening $\varphi$. These
-cluster nodes can then be described in terms of equivalence classes
-within the fine-grained DAG as $[V_i]_{\varphi}$. Edge inclusion in the
-cluster DAG is governed by these equivalence relations, so an edge in
-the coarsened CDAG exists if there exists an edge between members of the
-equivalence classes in the fine-grained DAG:
-$\exists \ \langle [V_i]_{\varphi} \rightarrow [V_j]_{\varphi}\rangle_{G^C}$
-iff $\exists \ \langle V_{i'} \rightarrow V_{j'}\rangle_G$ such that
-$V_i \sim_{\varphi} V_{i'},V_j \sim_{\varphi} V_{j'}$.
 
 # Theory: Causal consistency between models
 
-Good paper on projections and presevation of causal quantities under them: https://www-sciencedirect-com.ezproxy.lib.uts.edu.au/science/article/pii/S0888613X24000951 
-
-
+Good paper on projections and preservation of causal quantities under
+them:
+https://www-sciencedirect-com.ezproxy.lib.uts.edu.au/science/article/pii/S0888613X24000951
 
 ## Metrics, semimetrics, pseudometrics, dissimilarities
 
 Supposing we have some function $\operatorname{d}(x,y) \rightarrow R$
 
-- **Dissimilarities** are non-negative, symmetric, and zero on the diagonal. This is good enough for things like `hclust`. 
+- **Dissimilarities** are non-negative, symmetric, and zero on the
+  diagonal. This is good enough for things like `hclust`.
 - If we add the triangle inequality, we have a **pseudometric**.
-- If we add the ...
-
-
+- If we add the iden...we have a **semimetric** (although this language depends on the field.)
 
 ## Levels
 
-+----------------------------------+----------------------------------+
-| Causal level                     | Example Statements; $\gamma$     |
-+==================================+==================================+
-| $\mathcal{L}_0$                  | List of variables (the           |
-|                                  | vocabulary)                      |
-+----------------------------------+----------------------------------+
-| $\mathcal{L}_1$ : Association /  | Implied conditional              |
-| Seeing                           | independencies;                  |
-|                                  |                                  |
-|                                  | d-separation                     |
-+----------------------------------+----------------------------------+
-| $\mathcal{L}_2$ : Intervention / | Adjustment sets; graph           |
-| Doing                            | operations under interventions   |
-+----------------------------------+----------------------------------+
-| $\mathcal{L}_3$ : Counterfactual | Joint distribution under         |
-| / Imagining                      | manipulation of variables        |
-+----------------------------------+----------------------------------+
++---------------------------------+---------------------------------+
+| Causal level                    | Example Statements; $\gamma$    |
++=================================+=================================+
+| $\mathcal{L}_0$                 | List of variables (the          |
+|                                 | vocabulary)                     |
++---------------------------------+---------------------------------+
+| $\mathcal{L}_1$ : Association / | Implied conditional             |
+| Seeing                          | independencies;                 |
+|                                 |                                 |
+|                                 | d-separation                    |
++---------------------------------+---------------------------------+
+| $\mathcal{L}_2$ : Intervention  | Adjustment sets; graph          |
+| / Doing                         | operations under interventions  |
++---------------------------------+---------------------------------+
+| $\mathcal{L}_3$ :               | Joint distribution under        |
+| Counterfactual / Imagining      | manipulation of variables       |
++---------------------------------+---------------------------------+
 
 ## Causal consistency
 
@@ -231,7 +199,7 @@ collection of variables.
 
 As consistency is described as agreement between sets of statements we
 can use the Jaccard index between two sets of an agreed collection of
-\$\\mathcal{L}\_i\$ statemnts to measure the consistency, and the
+$\mathcal{L}_i$ statemnts to measure the consistency, and the
 Jaccard distance to create a distance function between the two models.
 These are built from the principles articulated in Schooltink et. al,
 were we are looking at some measure of the preservation of all the
@@ -258,23 +226,30 @@ also in the shared vocabulary $\mathcal{S}$, where as the latter asks if
 $x,y \in \mathcal{S}$ are able to be d-separated by some set of
 variables in $G$.
 
-### Causal distance metric
+### Causal dissimilarity
 
 Then we define:
 
 $$\operatorname{d}_{\mathcal{L}_i}(G,H)=1 - J_{\mathcal{L}_i}; J_{\mathcal{L}_i}=\frac{|\hat{\Gamma}_i(G) \ \cap \ \hat{\Gamma}_{i}(H)|}{|\hat{\Gamma}_i(G) \ \cup \ \hat{\Gamma}_{i}(H)|}$$
 
-Or, using the symmetric difference operator, and using restriction notation, so $\Gamma\!\upharpoonright\!S$ are the statements restricted to a set S.  
+Or, using the symmetric difference operator, and using restriction
+notation, so $\Gamma\!\upharpoonright\!S$ are the statements restricted
+to a set S.
 
 $$\operatorname{d}_{\mathcal{L}_i}(G,H)=\frac{|\ (\Gamma_{i}(G) \ \Delta \ {\Gamma}_{i}(H))\!\upharpoonright\!\mathcal{S}_{GH}\ | }{|\ ({\Gamma}_i(G) \ \cup \ {\Gamma}_{i}(H))\!\upharpoonright\!\mathcal{S}_{GH}\ |}$$
 
-Or, we could look at all the statements, without the $\mathcal{S}$, and let $\mathcal{L}_0$ carry that load:
+Or, we could look at all the statements, without the $\mathcal{S}$, and
+let $\mathcal{L}_0$ carry that load:
 
 $$\operatorname{d}_{\mathcal{L}_i}(G,H)=\frac{|{\Gamma}_i(G) \ \Delta \ {\Gamma}_{i}(H)|}{|{\Gamma}_i(G) \ \cup \ {\Gamma}_{i}(H)|}$$
 
-It might be easier to use the latent projection notation. A latent projection of a graph $G$ onto a set of nodes $\mathcal{S}$ is $\pi_{\mathcal{S}}(G)$ and preserves $\mathcal{L}_{1,2}$ statements. L1 is Verma and Pearls theorem, for disjoint X, Y, Z, X _|_ Y | Z is d-separated in G iff m-separated in $\pi_{\mathcal{S}}(G)$. So $\Gamma_{1}(G)\upharpoonright \mathcal{S}$, the statements restricted to S, is $\pi_{\mathcal{S}}(G)$ exactly (get ref). 
-
-
+It might be easier to use the latent projection notation. A latent
+projection of a graph $G$ onto a set of nodes $\mathcal{S}$ is
+$\pi_{\mathcal{S}}(G)$ and preserves $\mathcal{L}_{1,2}$ statements. L1
+is Verma and Pearls theorem, for disjoint X, Y, Z, X *\|* Y \| Z is
+d-separated in G iff m-separated in $\pi_{\mathcal{S}}(G)$. So
+$\Gamma_{1}(G)\upharpoonright \mathcal{S}$, the statements restricted to
+S, is $\pi_{\mathcal{S}}(G)$ exactly (get ref) - well so some claim. However, that has not proven to be the case with the implementation here. Using the restrction to a set of statements instead of the projection method. 
 
 Key to the implementation is the choice of what statement to include in
 $\Gamma_i$, and how then to restrict this to the possible shared
@@ -335,7 +310,7 @@ not exhaustive, but rather choose the implied conditional independence
 relationships for $\mathcal{L}_1$ and the sets of adjustment sets for
 $\mathcal{L}_2$.
 
-### Defining L0-discrepency
+### Defining L0-dissimilarity, distance
 
 With an abuse of the intended use of the notation
 $\mathcal{L}_0$-discrepancy will be simply a measure of the
@@ -381,7 +356,6 @@ x \in \operatorname{an}_{\mathcal{G}_X}(y) \cup
       \operatorname{an}_{\mathcal{G}_Y}(y),\ x \neq y \bigr\},$$
 
 $\mathcal{L}_i\text{-}\operatorname{d_{xy}}$
-
 
 ### Defining L2-discrepency
 
@@ -561,33 +535,42 @@ d_{X \to Y} =
      {\displaystyle\sum_{\mathcal{P}:\, \iota_X \geq \iota_Y}
       \max\bigl\{|\tilde{\mathbf{Z}}_X(x,y)|,\, 1\bigr\}}$$
 
-# Distance function definitions
+# Theory: Graph coarsening
 
-``` {r defining-distance-functions, echo = T}
-L0_d <- function(m_i, m_j) {
-    vocab_i <- gcm_nodelist(m_i)
-    vocab_j <- gcm_nodelist(m_j)
-    diff <- dplyr::symdiff(vocab_i, vocab_j)
-    union <- dplyr::union(vocab_i, vocab_j)
-    return(nrow(diff) / nrow(union))
-}
+Given a (fine-grained) DAG with graph $G$ we may describe a cluster DAG
+(CDAG) by merging some nodes together into clusters. This new
+(coarse-grained) DAG will be $G^C$ and edges are formed by including
+edges between clusters if there existed edges between nodes in those
+clusters in the fine-grained DAG. A node $V_i$ in the fine grained model
+$G$ is now clustered into a higher level cluster node, $[V_i]$, in the
+CDAG $G^C$. More formally, we describe a coarsening map
+$\varphi:\mathbf{V}_G \rightarrow \mathbf{V}_{G^C}$ so that
+$\varphi(G)=\varphi G=G^{C}$. The coarsening function $\varphi$ induces
+an equivalence relation $\sim _\varphi$ on the nodes of $\mathbf{V}_{G}$
+where $V_i \sim_\varphi V_j$ iff $\varphi (V_i) = \varphi (V_j)$, i.e.
+both nodes map to the same cluster under the coarsening $\varphi$. These
+cluster nodes can then be described in terms of equivalence classes
+within the fine-grained DAG as $[V_i]_{\varphi}$. Edge inclusion in the
+cluster DAG is governed by these equivalence relations, so an edge in
+the coarsened CDAG exists if there exists an edge between members of the
+equivalence classes in the fine-grained DAG:
+$\exists \ \langle [V_i]_{\varphi} \rightarrow [V_j]_{\varphi}\rangle_{G^C}$
+iff $\exists \ \langle V_{i'} \rightarrow V_{j'}\rangle_G$ such that
+$V_i \sim_{\varphi} V_{i'},V_j \sim_{\varphi} V_{j'}$.
+
+
+# Defining dissimilarity functions
+
+```{r defining-distance-functions, echo = T}
+L0_d <- L0_dissimilarity_vocab
 
 L1_d <- partial(
-    L1_dance_via_latent_projection, 
+    L1_dissimilarity_ci, 
     max_cond = 5)
 L2_d <- partial(
-    L2_dance_via_latent_projection,
+    L2_dissimilarity_adj_set,
     adj_type = "all")
 
-L0_d <- L0_d
-L1_d <- partial(
-    L1_dissimilarity_ci,
-    max_cond = 5
-)
-L2_d <- partial(
-    L2_dissimilarity_adj_set,
-    adj_type = "all"
-)
 ```
 
 # Vignettes
@@ -736,13 +719,15 @@ d.L2.C2_C1W <- L2_d(
     vnt.tdags$Cluster1W)
 
 # Causal degradation under coarsening map
-deg.L1.FA <- gcm_cluster_L1_degradation(vnt.tdags$Fine1a, first_letter_coarsen)$degradation
+deg.L1.FA <- gcm_cluster_L1_degradation(
+    g = vnt.tdags$Fine1a, .f = first_letter_coarsen)$degradation
 deg.L1.FB <- gcm_cluster_L1_degradation(vnt.tdags$Fine1b, first_letter_coarsen)$degradation
+
 deg.L2.FA <- gcm_cluster_L2_degradation(vnt.tdags$Fine1a, first_letter_coarsen)$degradation
 deg.L2.FB <- gcm_cluster_L2_degradation(vnt.tdags$Fine1b, first_letter_coarsen)$degradation
 ```
 
-## L-discrepencies
+## L-dissimilarities
 
 Given a base DAG of
 $\mathcal{G}=\{X \rightarrow Y\} \cup \{X \leftarrow Z \rightarrow Y\}$
@@ -832,19 +817,24 @@ Under this coarsening we see:
   `r deg.L2.FB`
 
 Here we see that the only causal degradation is when we coarsen
-$\mathcal{G}^{[x]}$. Diving into why we see that it is because the
+$\mathcal{G}^{[x]}$. We see the $\mathcal{L}_2$ degradation because the
 adjustment sets for $P(Y |\operatorname{do}(Z))$ disagree on what to do
 with $X$. In the fine graph $X_1$ should be excluded from the adjustment
 set, wheras $X_2$ should be included as the open path
 $Z \rightarrow X_1 \leftarrow X_2 \rightarrow Y$ is open but non-causal.
 This disagreement cannot be reconciled when we form the cluster
 $[X]=\{X_1, X_2\}$ in the cluster DAG.
+We see the $\mathcal{L}_1$ degradation because the cluster DAG is fully connected, but the fine DAG has $X_2 \perp Z$, which is lost moving to the cluster DAG.
 
-## Diabolic non-triangle inequality
 
-The following three DAGs have been constructed to push the triangle inequality: $d(x,z) \le d(x,y)+d(y,z)$. They are chosen so that model $G_Y$ is very similar in its overlapping nodes to $G_X$ and $G_Z$, but that $G_X$ and $G_Z$ strongly disagree where they overlap. 
+## Diabolic trio breaks the triangle inequality
 
-``` {r}
+The following three DAGs have been constructed to push the triangle
+inequality: $d(x,z) \le d(x,y)+d(y,z)$. They are chosen so that model
+$G_Y$ is very similar in its overlapping nodes to $G_X$ and $G_Z$, but
+that $G_X$ and $G_Z$ strongly disagree where they overlap.
+
+```{r}
 diabolic.X <- tbl_graph(
     edges = tribble(
         ~from, ~to,
@@ -891,15 +881,15 @@ diabolic.Z <- tbl_graph(
 )
 ```
 
-``` {r}
+```{r}
 plot(diabolic.X)
 plot(diabolic.Y)
 plot(diabolic.Z)
 
 ```
 
-``` {r}
-diabolic.distances <- 
+```{r}
+diabolic.dissimilarities <- 
     tibble(pair = c("X, Z", "X, Y", "Y, Z"),
        L0 = c(
            L0_d(diabolic.X, diabolic.Z),
@@ -918,25 +908,19 @@ diabolic.distances <-
            )
        ) 
 
-diabolic.ds <- 
-    tibble(pair = c("X, Z", "X, Y", "Y, Z"),
-       L0 = c(
-           L0_d(diabolic.X, diabolic.Z),
-           L0_d(diabolic.X, diabolic.Y),
-           L0_d(diabolic.X, diabolic.Y)
-           ),
-       L1 = c(
-           L1_d(diabolic.X, diabolic.Z),
-           L1_d(diabolic.X, diabolic.Y),
-           L1_d(diabolic.X, diabolic.Y)
-           ),
-       L2 = c(
-           L2_d(diabolic.X, diabolic.Z),
-           L2_d(diabolic.X, diabolic.Y),
-           L2_d(diabolic.X, diabolic.Y)
-           )
-       ) 
 ```
+
+For these difficult models, we first look at the distance metric, which checks all $\mathcal{L}_i$ statements, regardless of a common vocabulary, and finds the Jaccard distance of that:
+
+The triangle equality holds for this set, but it also describes X,Y and Y,Z as nearly as far apart on $\mathcal{L}_1$ and $\mathcal{L}_2$ as possible, despite containing no contradictions of statements within either of these shared vocabularies. These seems like an unhealthy way to examine causal consistency between models. The dissimilarity measure completely violates the triangle equality however, but returns seemingly more intuitive results: 
+
+``` {r}
+diabolic.dissimilarities |> 
+    knitr::kable(digits = 2)
+```
+
+Note here that $(\mathcal{L}_0 + \mathcal{L}_1 + \mathcal{L}_2)/3$ does not satisfy the triangle inequality in this case. This, however, is not required for clustering anyway, and it is better that the measures make sense. 
+
 # Data import
 
 ```{r loading-models}
@@ -967,8 +951,6 @@ hue1 <- palette.colors(3, palette = "Okabe-Ito")[[2]]
 hue2 <- palette.colors(3, palette = "Okabe-Ito")[[3]]
 
 ```
-
-## Graphical Causal Models
 
 Modelling sessions were originally run on Loopy, then transcribed into
 DAGitty (online) to generate the following `dot` language syntax for
@@ -1181,8 +1163,6 @@ node_group_nice_name <- tribble(
 )
 ```
 
-### Coding node groups
-
 This process involved iterating between:
 
 1.  Examining the transcript, the node description (label in the
@@ -1265,8 +1245,6 @@ code_node_group <- function(v) {
 }
 ```
 
-### Coding node types
-
 ```{r node-type}
 code_node_type <- function(n) {
     fl <- str_extract(n, "^.{1}")
@@ -1289,8 +1267,6 @@ code_node_type <- function(n) {
 }
 
 ```
-
-### Coding node measurability
 
 From the node groups, describe how easy (or not) they are to measure.
 This is completed by someone familiar to the data warehouse at the
@@ -1407,14 +1383,10 @@ coarsen_node_measurability <- function(ng_list, sep = ";") {
 
 ```
 
-# Graph surgery
-
-## Graph helper functions
+## Graph surgery
 
 Functions outlined in the `gcm_helpers.R` script. Functions starting
 with `gcm_` should operate on either a `dagitty` or `tidygraph` object.
-
-### Graph metrics functions
 
 Generating a range of edge metrics - comparisons across models. Want to
 label edges in the unified DAG as 'contested' if they switch direction
@@ -1422,7 +1394,7 @@ between some models. Also want to examine the same idea for a list of
 descendants. This is handled as a new table of edges - including all
 possible edges.
 
-``` {r}
+```{r}
 fill_matrix_NAs_with_colmean <- function(m) {
     stopifnot(is.matrix(m), is.numeric(m))
     
@@ -1610,7 +1582,7 @@ merged_all_graph <- tbl_graph(nodes = merged_nodes, edges = merged_edges)
 
 ```
 
-## Coarsen graphs
+## Coarsen graphs into CDAGs
 
 This is based on the coding of the nodes into node groups.
 
@@ -1619,7 +1591,7 @@ has the potential to introduce loops depending on how the constructs
 were built, so we need to check the causal consistency between the
 fine-grained graph and the clustered / merged / higher-level graph.
 
-```{r}
+```{r creating-CDAGs}
 clean_node_group_cluster_graph <- function(cdag) {
     # After coarsening with code_node_group cleans up some of the 
     # names and nodes
@@ -1670,11 +1642,7 @@ node_group_cluster_graph_from_clusters <-
 
 ```
 
-# Graph metrics
-
-## Measurability, complexity
-
-### Model level metrics
+## Graph metrics
 
 ```{r path-metrics}
 all_paths_summary <-
@@ -1714,15 +1682,11 @@ dag_complexity_metrics <-
     inner_join(all_paths_summary, by = "Model")
 ```
 
-### Node group level metrics
-
 ```{r building-all-nodes-with-metrics}
 all_nodes_with_metrics <- 
     imap(tdags, \(g,n) gcm_node_metrics(g)) |> 
     list_rbind(names_to = "Model")
 ```
-
-## Joining metrics and session data
 
 ```{r joining-session-data-to-gcm-metrics}
 gcm_metrics <- 
@@ -1739,8 +1703,6 @@ all_nodes_with_metrics |>
 ```
 
 ## Modelling sessions, time and perceptions
-
-### Figure: Time spent with model and modelling utility
 
 ```{r figure-session-completions-and-gcm-representation}
 # denser option - radial arc bars for observable
@@ -1874,7 +1836,7 @@ gcm_metrics |>
     knitr::kable(caption = "GCM session metrics")
 ```
 
-## Merging graphs
+## Merged graphs
 
 ```{r plotting-merged-graph}
 
@@ -1963,8 +1925,6 @@ leg_tall <- cowplot::get_legend(pMergedFineLegendTall)
 leg_tall_plot <- cowplot::ggdraw(leg_tall)
 
 ```
-
-### Layout for cluster graph
 
 ```{r plotting-coarse-graph}
 set.seed(1)
@@ -2115,11 +2075,9 @@ g_plot_coarse <- function(g, lyt = merged_coarse_layout,
 pCoarseMerged <- merged_coarse_layout |> 
     plot_coarse_graph_from_layout() +
     geom_node_text(aes(label = name))
-pCoarseMerged
+# pCoarseMerged
 # ggsave("dag_merged_course.svg", pCoarseMerged, , width = 6, height = 6)
 ```
-
-### Figure - all graphs, single highlight
 
 ```{r plotting-a-highlighted-graph-functions}
 plot_highlighted_fine_graph <- function(model = 1, LEGEND_POSITION = "none") {
@@ -2295,8 +2253,6 @@ plot_highlighted_coarse_graph <- function(model = 1, LEGEND_POSITION = "none",
 }
 ```
 
-### Figure: Highlighted graphs on merged background
-
 ```{r figure--highlighted-coarse-model}
 # Model used in paper
 md_for_paper <- 5
@@ -2334,13 +2290,11 @@ p_coarse_show_and_save <- function(n){
 }
 ```
 
-## Visualising coarsened graphs
+## Visualising cluster DAGs
 
 Note the appearance of feedback loops - these are between S.Cp and S.Kn,
 but also S.Cp and H.AI.evil. These metacognitive skills are clearly seen
 as important feedback processes in this system.
-
-### Figure: Consensus DAG via common paths
 
 Most common node group patterns - nodes in at least half the models,
 then looking at the resulting graph of node-groups.
@@ -2528,7 +2482,7 @@ all_node_groups_aggregated_metrics <-
 
 ```
 
-#### Figure: Node importance and data availability
+#### Figure -- Node importance and data availability
 
 ```{r figure-node-importance-and-measurability}
 m_pal <- c("darkslateblue",
@@ -2619,7 +2573,7 @@ all_nodes_with_metrics |>
     knitr::kable(caption = "Proportions of nodes by measurability")
 ```
 
-#### Table: Node lists, with types, groups and importance metrics
+## Tables of nodes
 
 Node group measurability was coded according to:
 
@@ -2661,22 +2615,28 @@ node_groups_table <-
     ungroup()
 
 node_groups_table |> 
-    arrange(node_type, node_group)
+    arrange(node_type, node_group) |> 
+    knitr::kable()
 ```
 
-```{r}
+```{r results = 'asis'}
 all_nodes_with_metrics |> 
     distinct(name) |> 
     nrow() |> 
-    paste("distinct nodes")
+    paste("distinct nodes\n") |> 
+    cat()
 
 all_nodes_with_metrics |> 
     distinct(node_group) |> 
     nrow() |> 
-    paste("node groups")
+    paste("node groups.\n") |> 
+    cat()
+```
 
+``` {r}
 all_nodes_with_metrics |> 
-    distinct(name, measurability) |> count(measurability)
+    distinct(name, measurability) |> count(measurability) |> 
+    knitr::kable()
 ```
 
 What about grouping by the node category first, so it's hierarchical?
@@ -2693,7 +2653,8 @@ node_types_table <-
     # mutate(node_type = str_c(node_type, " (", nt, ")")) |> 
     # select(-nt)
 
-node_types_table
+node_types_table |> 
+    knitr::kable()
 ```
 
 ## Informal consistency: Edge coherence
@@ -2925,7 +2886,7 @@ prob_descendant_inclusion_given_existence_cluster_graphs <-
   it could be included in, given the edge appears in at least one model.
   This is `r prob_descendant_inclusion_given_existence`.
 
-### L1 degradation when clustering
+# Causal degradation when clustering
 
 This computes two metrics, the loss ratio of conditional independence
 relationships (ci_loss) and the rate of introduction of spurious
@@ -2946,7 +2907,7 @@ if (FALSE) {
             message(str_c(m, ":"))
             tibble(L1_degradation = gcm_cluster_L1_degradation(
                 g, code_node_group,
-                max_cond = 2)$degradation
+                max_cond = 4)$degradation
             )}) |> 
         list_rbind(names_to = "Model")
     saveRDS(clustering_L1_degradation, "cache/L1-degradation.RDS")
@@ -2962,15 +2923,13 @@ clustering_L1_degradation |>
         digits = 4)
 ```
 
-### L2 degradation when clustering
-
 This computes a single error metric - the % of lost identifiable pairs
 when coarsening. So this is where the $P(Y|do(X))$ is identifiable in
 the fine graph but $P(\varphi(Y)|do(\varphi(X)))$ is not identifiable in
 the coarsened cluster graph.
 
 ```{r L2-degradation-of-clustering}
-if (recalculate_distance_matrices) {
+if (FALSE) {
     # adj_type = "all" for coverage, but slow
     # adj_type = "optimal" for best efficient estimation
     clustering_L2_degradation <- 
@@ -2982,7 +2941,7 @@ if (recalculate_distance_matrices) {
             tibble(
                 L2_degradation = gcm_cluster_L2_degradation(
                     g, code_node_group,
-                    adj_type = "optimal")$degradation
+                    adj_type = "all")$degradation
             )}) |> 
         list_rbind(names_to = "Model")
     saveRDS(clustering_L2_degradation, "cache/L2-degradation.RDS")
@@ -2998,9 +2957,9 @@ clustering_L2_degradation |>
         digits = 4)
 ```
 
-# Causal consistency: distance and degradation
+# Causal dissimilarity and joining similar models
 
-### Computing L0, L1, L2 distances between models
+## Computing L-dissimilarity
 
 ```{r dist-matrix-helper-funcion}
 compute_dist_matrix <- function(
@@ -3113,8 +3072,6 @@ matrix_fill_NAs_with_colmean <- function(M, include_ids = FALSE) {
 
 ```
 
-#### A note on clustering methods
-
 A note on clustering: Some methods of `hclust` have underlying geometric
 assumptions (assume distances are Euclidean, which they are not), and
 these are `ward.D`, `ward.D2`, `centroid` (UPGMC) and `median` (WPGMC).
@@ -3139,9 +3096,6 @@ As such two methods of visualising the between model distances are used:
 **average** and **worst-case**. Currently defaulting to the average
 scenario.
 
-
-### L0 consistency between models
-
 ```{r L0-between-models-distances-as-matrix}
 
 if (recalculate_distance_matrices) {
@@ -3157,8 +3111,6 @@ if (recalculate_distance_matrices) {
 }
 ```
 
-### L1 consistency between models
-
 ```{r L1-distance-between-two-models}
 
 if (recalculate_distance_matrices) {
@@ -3171,8 +3123,6 @@ if (recalculate_distance_matrices) {
     L1_between_model_dist_matrix <- readRDS("cache/L1_models_dist_matrix.RDS")
 }
 ```
-
-### L2 consistency between models
 
 ```{r L2-distance-between-two-models}
 
@@ -3192,10 +3142,6 @@ if (recalculate_distance_matrices) {
 ```
 
 
-
-
-### Comparing dendrograms
-
 ```{r}
 library(dendextend)
 library(viridis)
@@ -3210,15 +3156,13 @@ dend_L12 <- dendlist(
     L2_hclust_models |> as.dendrogram() |> highlight_branches_col(dendo_pal)
 )
 
-tanglegram(dend_L12, main_left = "L1-distance", main_right = "L2-distance",
+tanglegram(dend_L12, main_left = "L1-dissimilarity", main_right = "L2-dissimilarity",
            sort = TRUE, edge.lwd = 3, lwd = 2,
            common_subtrees_color_lines = TRUE, 
            highlight_distinct_edges  = FALSE)
 
 
 ```
-
-#### Combined L1, L2 between models
 
 ```{r L12-clustering-CDAGs}
 L12_dist_matrix <- 
@@ -3232,11 +3176,10 @@ L12_hclust_models <-
 
 ```
 
-#### Combined L0, L1, L2 between models
+## Grouping CDAGs by L-similarity
 
-This is probably the best one, as the L0 scales according to shared
-nodes, and the L1 and L2 are only computed on shared nodes.
 
+We now combine all 3 levels of dissimilarity into an averaged measure, then perform a hierarchical clustering on the resultant distance matrix. 
 
 ```{r L012-clustering-CDAGs}
 L012_dist_matrix <- 
@@ -3251,18 +3194,23 @@ L012_hclust_models <-
 
 ```
 
-
 ```{r figure--cdag-cluster-dendro-portrait}
 png("figures/FIG--CDAG-dendrogram.png", 
     width = 10, height = 3, units = "in", res = 300)
 L012_hclust_models |> 
     as.dendrogram() |> 
     set("labels_col", 
-        value = c("#009E73", "#0072B2", "#56B4E9", "#D55E00", "#CC79A7"),
-        k = 5) |> 
+        value = c("#009E73", 
+                  "#0072B2",
+                  # "#56B4E9", 
+                  "#D55E00", "#CC79A7"),
+        k = 4) |> 
     set("branches_k_color", 
-        value = c("#009E73", "#0072B2", "#56B4E9", "#D55E00", "#CC79A7"),
-        k = 5) |> 
+        value = c("#009E73", 
+                  "#0072B2",
+                  # "#56B4E9", 
+                  "#D55E00", "#CC79A7"),
+        k = 4) |> 
     plot(axes = T, horiz = F) 
 
 dev.off()
@@ -3271,21 +3219,21 @@ dev.off()
 L012_hclust_models |> 
     as.dendrogram() |> 
     set("labels_col", 
-        value = c("#009E73", "#0072B2", "#56B4E9", "#D55E00", "#CC79A7"),
-        k = 5) |> 
+        value = c("#009E73", 
+                  "#0072B2",
+                  # "#56B4E9", 
+                  "#D55E00", "#CC79A7"),
+        k = 4) |> 
     set("branches_k_color", 
-        value = c("#009E73", "#0072B2", "#56B4E9", "#D55E00", "#CC79A7"),
-        k = 5) |> 
+        value = c("#009E73", 
+                  "#0072B2",
+                  # "#56B4E9", 
+                  "#D55E00", "#CC79A7"),
+        k = 4) |> 
     plot(axes = T, horiz = F) 
 
 ```
 
-
-
-#### Clusters of cluster DAGs
-
-It seems that models M1, M3 and M6 are close to each other
-(GC1), as well as M2, M4 and M7 (GC2) and M5 and M8 (GC3).
 
 ```{r latent-projection-merge-graphs}
 # thought - merge on latent projection of shared nodes only?
@@ -3358,20 +3306,9 @@ most_common_ngs <- all_node_groups_aggregated_metrics |>
     count(node_group) |> 
     filter(n > 2) |> 
     pull(node_group)
-
-# grp all help
-M234_col <- "#CC79A7" # Focused on a range of help, general confounding from all AI help
-
-# group misuse
-M67_col <- "#009E73" # AI misuse, driven by decisions, confounded by other AI help
-# group metacog
-M15_col <- "#D55E00" # More focused on student emotion / engagement and metacognition
-
-# group redesign
-M8_col <- "#56B4E9" # qualitatively different
 ```
 
-# Latent projections of CDAGs
+## Latent projections of CDAG groups
 
 The latent projection of all models is relatively uninformative:
 
@@ -3379,80 +3316,86 @@ The latent projection of all models is relatively uninformative:
 plot_latent_clusters_merged(1:8, label = T)
 ```
 
+
+
 Assisted by the clustering there is a natural way to partition the
 models:
 
-- `MetCog` models M15: Student motivation key confound between knowledge, metacognition, and assessment. Might need to add in misuse of AI
-- `ReDesign` model M8: A different kind of learning system - assessment mediated through a range of process based measures. Resilient to AI influence. 
-- `AllHelp` models M234: Focused on a range of help and the general confounding of assessment measures through all help, including AI
-- `MisUse` models M67: Targeted AI misuse, and the decisions that drive that choice. 
+``` {r}
+grouped_cdags <- list(
+    C1plus2 = list(
+        name = "metacognition-and-misuse",
+        models = c(5,8, 2,4,7),
+        description = "Exploring student metacognition skil and misuse of AI",
+        colour = "#008595"
+    ),
+    C1 = list(
+        name = "help-confounds--metacog-mediates",
+        models = c(5,8),
+        description = "Each help (tutor, AI, AI misuse) similarily influences student knowledge, and grade, mediated through metacognitive skill.",
+        colour = "#009E73"
+    ),
+    C2 = list(
+        name = "actions-leave-traces--metacog-skill-defends-AI-misuse",
+        models = c(2, 4, 7),
+        description = "Student actions leacing traces in LMS, lower metacognitive skill  drives Misuse of AI.",
+        colour = "#0072B2"
+    ),
+    C3 = list(
+        name = "course-design-and-teacher-capabilities",
+        models = c(1),
+        description = "Focused on course design, teacher capabilities. Did not identify knowledge to grade confounding.",
+        colour = "#D55E00"
+    ),
+    C4 = list(
+        name = "knowledge-action-feedback--hidden-misuse-confounding",
+        models = c(3, 6),
+        description = "Ongoing feedback between student actions and knowledge, hidden confounding between AI use and grades.",
+        colour = "#CC79A7"
+    )
+)
 
-## Projection of MetaCog model groups
-
-```{r eval = T}
-
-plot_latent_clusters_merged(
-    c(1,5), label = T, additional_nodes = "H.AI.evil")
-p_cdag_metacog <- plot_latent_clusters_merged(
-    c(1,5), additional_nodes = "H.AI.evil") + ggtitle("") +
-    coord_equal()+
-    theme(panel.border = element_rect(colour = M15_col, fill = NA, linewidth = 1))
-ggsave(
-    "figures/minifig--CDAG-proj-MetaCog.png", 
-    plot = p_cdag_metacog,
-    width = 4, height = 4,
-    units = "in")
+grouped_cdags |> 
+    map(as_tibble) |> 
+    list_rbind() |> 
+    select(-colour) |> 
+    group_by(name, description) |> 
+    summarise(models = str_c(models, collapse = "; ")) |> 
+    mutate(name = name |> 
+               str_replace("--", ";\n") |> 
+               str_replace_all("-", " ")) |> 
+    mutate(description = str_wrap(description, width = 50)) |> 
+    knitr::kable()
 ```
 
-## Projection of ReDesign model
 
-```{r eval = T}
 
-plot_latent_clusters_merged(
-    c(8), label = T)
-p_cdag_redesign <- plot_latent_clusters_merged(
-    c(8)) + ggtitle("") +
-    coord_equal()+
-    theme(panel.border = element_rect(colour = M8_col, fill = NA, linewidth = 1))
-ggsave(
-    "figures/minifig--CDAG-proj-ReDesign.png", 
-    plot = p_cdag_redesign,
-    width = 4, height = 4,
-    units = "in")
+```{r plotting-latent-projections-of-cdag-groups, eval = T}
+grouped_cdags |> 
+    map(
+        \(l)
+        plot_latent_clusters_merged(l$models, label = TRUE)
+    )
 ```
 
-## Projection of All Help model groups
+``` {r}
+save_latent_merged_cdag_rect_plot <- function(l) {
+    p <- plot_latent_clusters_merged(l$models) + 
+        ggtitle("") +
+        coord_equal()+
+        theme(
+            panel.border = element_rect(
+                colour = l$colour, fill = NA, linewidth = 1))
+    ggsave(
+        str_c("figures/projCDAG-", l$name,".png"), 
+        plot = p,
+        width = 4, height = 4,
+        units = "in")
+    
+}
 
-```{r}
-
-plot_latent_clusters_merged(
-    c(2,3,4), label = T, additional_nodes = "H.AI.evil")
-p_cdag_allhelp <- plot_latent_clusters_merged(
-    c(2,3,4), additional_nodes = "H.AI.evil") + ggtitle("") +
-    coord_equal()+
-    theme(panel.border = element_rect(colour = M234_col, fill = NA, linewidth = 1))
-ggsave(
-    "figures/minifig--CDAG-proj-AllHelp.png", 
-    plot = p_cdag_allhelp,
-    width = 4, height = 4,
-    units = "in")
-```
-
-## Projection of MisUse model groups
-
-```{r eval = T}
-
-plot_latent_clusters_merged(
-    c(6,7), label = T, additional_nodes = "H.AI.evil")
-p_cdag_misuse <- plot_latent_clusters_merged(
-    c(6,7), additional_nodes = "H.AI.evil") + ggtitle("") +
-    coord_equal()+
-    theme(panel.border = element_rect(colour = M67_col, fill = NA, linewidth = 1))
-ggsave(
-    "figures/minifig--CDAG-proj-MetaCog.png", 
-    plot = p_cdag_misuse,
-    width = 4, height = 4,
-    units = "in")
+grouped_cdags |> 
+    map(save_latent_merged_cdag_rect_plot)
 ```
 
 
@@ -4188,7 +4131,6 @@ if (recalculate_distance_matrices) {
 
 ```
 
-
 ```{r L2-between-all-CDAGs}
 # L2 distance between two models
 if (recalculate_distance_matrices) {
@@ -4205,9 +4147,7 @@ if (recalculate_distance_matrices) {
 }
 ```
 
-## L1, L2 clustering deviations
-
-```{r}
+```{r tanglegram-L1-L2-clustering-all}
 library(viridis)
 
 L1_hclust_all <- hclust(as.dist(all_L1_d_matrix),
@@ -4224,56 +4164,22 @@ tanglegram(dend_L12_all, main_left = "L1-consistency", main_right = "L2-consiste
            sort = TRUE, edge.lwd = 3, lwd = 2,
            common_subtrees_color_lines = TRUE, 
            highlight_distinct_edges  = FALSE)
-
 ```
 
-## Averaged L-distance between all models
-
-### Figure -- L-distance clustering across all models
 
 ```{r L012-dist-clusters-across-all}
-
-# imputed_L1 <- all_L1_d_matrix |> 
-#     matrix_fill_NAs_with_colmean()
-# imputed_L2 <- all_L2_d_matrix |> 
-#     matrix_fill_NAs_with_colmean()
-
 all_L012_dist_matrix <- 
     (all_L0_d_matrix + all_L1_d_matrix + all_L2_d_matrix) / 3
 
-# all_L012_dist_matrix <- 
-#     (imputed_L1 + imputed_L2) / 2
-
-# M136
-# M247
-# M58
-
-cp8 <- function(ids) {
-    c(ids, ids + 8)
-}
-
-L012_D_matrix_M234 <- 
-    all_L012_dist_matrix[cp8(c(2,3,4)), cp8(c(2,3,4))]
-
-L012_D_matrix_M23467 <- 
-    all_L012_dist_matrix[cp8(c(2,3,4,6,7)), cp8(c(2,3,4,6,7))]
-
-
 L012_hclust_full <- hclust(
     as.dist(all_L012_dist_matrix),
-    method = "average"
-    )
-# Splitting first into similar model groups
-L012_hclust_M23467 <- 
-    hclust(as.dist(L012_D_matrix_M23467),
-           method = "average")
-# Splitting first into similar model groups
-L012_hclust_M234 <- 
-    hclust(as.dist(L012_D_matrix_M234),
-           method = "average")
+    method = "average")
+
 ```
 
-``` {r dendo-full}
+## Grouping learned and expert CDAGs by similarity
+
+```{r dendo-full}
 dend <- 
     L012_hclust_full |> 
     as.dendrogram() 
@@ -4299,64 +4205,6 @@ dend |>
 
 ```
 
-When do the data derived models get separated from their model?
-
-- First partition: M2, M3, M4 separated.
-- Second partition: M8 separated.
-- Third partition: M1
-
-
-``` {r}
-dend2 <- 
-    L012_hclust_M23467 |> 
-    as.dendrogram() 
-
-lab  <- labels(dend2)
-is_M <- substr(lab, 1, 1) == "M"
-is_D <- substr(lab, 1, 1) == "D"
-
-dend2 <- set(dend2, "by_labels_branches_lty",
-            value = lab[is_D], TF_values = c(2, 1))
-
-leaf_cols <- c(
-    "#000000", "#E69F00", "#56B4E9", "#009E73",  "#0072B2", "#D55E00", "#CC79A7", "#999999","#F0E442")
-num <- as.integer(sub("^\\D+", "", lab))
-pal  <- setNames(leaf_cols, 1:8)
-labels_colors(dend2) <- pal[as.character(num)]
-
-
-dend2 |> 
-    hang.dendrogram(hang = 0.1) |>  
-    plot(axes = F, horiz = F) 
-
-```
-
-
-
-To look at between distances we examine:
-
-- Distances between the Learned model, $\mathcal{D}_k$, and its intended
-  target, $\mathcal{G}_k$.
-- Distances between models of a similar structure, so the cluster
-  $\{M_2, M_4,M_6, M_7\}$, $\{M_5, M_8\}$, $\{M_1,M_3\}$
-- Distances between all expert models $\{M_1, M_2, \dots,M_8\}$
-
-```{r}
-# would be nice to have the D's terminate at the height they leave the cluster of their corresponding model
-
-dend_main <- 
-    L012_hclust_full |> 
-    as.dendrogram() |> 
-    set("by_labels_branches_lty",
-        value = lab[is_D], TF_values = c(2,1)) 
-
-dend_M23467 <- L012_hclust_M23467 |> 
-    as.dendrogram() |> 
-    set("by_labels_branches_lty",
-        value = lab[is_D], TF_values = c(2,1)) 
-
-
-```
 
 ```{r}
 labels <- c(paste0("M", 1:8), paste0("D", 1:8))
@@ -4378,11 +4226,6 @@ nump <- as.integer(sub("^\\D+", "", labp))
 palp  <- setNames(leaf_cols, 1:8)
 labels_colors(dend_perfect) <- palp[as.character(nump)]
 
-L_hclust_perfect_learn_M23467 <- hclust(
-    as.dist(
-        d_mat[cp8(c(2,3,4,6,7)), cp8(c(2,3,4,6,7))]), 
-    method = "complete")
-
 tanglegram(dend1 = dend_perfect,
            dend2 = dend,
            main_left = "Target learning", main_right = "L-Consistency",
@@ -4394,70 +4237,6 @@ tanglegram(dend1 = dend_perfect,
            )
 ```
 
-Tanglegrams of the large cluster: 
-
-``` {r}
-tanglegram(dend1 = as.dendrogram(L_hclust_perfect_learn_M23467),
-           dend2 = dend_M23467,
-           main_left = "Target learning", main_right = "L-Consistency",
-           sort = TRUE, edge.lwd = 3, lwd = 2,
-           common_subtrees_color_lines = TRUE, 
-           highlight_distinct_edges  = F)
-
-```
-
-```{r L012-average-distances-between-all, eval=FALSE}
-CDAG_main_cluster_between_models_dist <- L12_D_matrix_main_cluster[1:4,1:4][
-    upper.tri(matrix(nrow = 4, ncol = 4)) |
-        lower.tri(matrix(nrow = 4, ncol = 4))]
-
-
-CDAG_metacog_cluster_between_models_dist <- 
-    L12_D_matrix_metacog_cluster[1:2,1:2][
-        upper.tri(matrix(nrow = 2, ncol = 2)) |
-            lower.tri(matrix(nrow = 2, ncol = 2))
-    ]
-
-CDAG_noMisuse_cluster_between_models_dist <- 
-    L12_D_matrix_noMisuse_cluster[1:2,1:2][
-        upper.tri(matrix(nrow = 2, ncol = 2)) |
-            lower.tri(matrix(nrow = 2, ncol = 2))
-    ]
-
-CDAG_main_cluster_model_to_learn_dist <- 
-    L12_D_matrix_main_cluster[1:4,5:8] |> diag()
-
-CDAG_metacog_cluster_model_to_learn_dist <- 
-    L12_D_matrix_metacog_cluster[1:2,3:4] |> diag()
-
-CDAG_noMisuse_cluster_model_to_learn_dist <- 
-    L12_D_matrix_noMisuse_cluster[1:2,3:4] |> diag()
-
-df.dbetween <- 
-    bind_rows(
-    tibble(compare = "between expert models within cluster", 
-           LD = c(CDAG_main_cluster_between_models_dist,
-                  CDAG_noMisuse_cluster_between_models_dist,
-                  CDAG_metacog_cluster_between_models_dist)),
-    tibble(compare = "pairwise between learned and intended model", 
-           LD = c(CDAG_main_cluster_model_to_learn_dist,
-                  CDAG_metacog_cluster_model_to_learn_dist,
-                  CDAG_noMisuse_cluster_model_to_learn_dist))) 
-
-df.dbetween |> 
-    ggplot(aes(x = LD, fill = compare, y = compare)) +
-    ggdist::stat_dist_slabinterval() +
-    theme_minimal() +
-    scale_fill_discrete(palette = palette.colors()[2:3], guide = "none")
-
-df.dbetween |> 
-    group_by(compare) |> 
-    summarise(
-        mean_dist = mean(LD),
-        sd_dist = sd(LD)
-    )
-
-```
 
 # Appendices
 
@@ -4536,14 +4315,3 @@ in the formalisation process and have other affordances as well.
 - Given a coarsening, check for L1-L2 validity
 - Would be good to have some workflow documented
 
-## Other notation systems
-
-Note - probably good to review the notation used in
-https://arxiv.org/pdf/2207.08603 - Zenarro's review of causal
-abstractions, and also in - https://arxiv.org/pdf/2301.04709 - which has
-a nice table at the front. Maybe check Dawid's paper for a clearer
-notation on interventions: <https://arxiv.org/pdf/2402.09429>. One thing
-that Dawid does is distinguish **syntactic terms by bold-face** and
-`interpretation terms about causality in teletype`.
-
-![](images/clipboard-4260285506.png)
