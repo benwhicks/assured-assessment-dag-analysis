@@ -53,12 +53,18 @@ dagitty_from_edge_df <- function(edges) {
 
 # ======= Graph helpers ===========
 
-gcm_nodelist <- function(g) {
+gcm_nodelist <- function(g, as_tibble = TRUE) {
     if (class(g)[[1]] == "dagitty") g <- dagitty_to_tidygraph(g)
     # tidygraph to a tibble of nodes
-    g %N>%
-        as_tibble() |> 
-        select(name) 
+    if (as_tibble) {
+        g %N>%
+            as_tibble() |> 
+            select(name) 
+    } else {
+        g %N>%
+            as_tibble() |> 
+            pull(name)
+    }
 }
 
 gcm_edgelist <- function(g){ 
@@ -71,6 +77,39 @@ gcm_edgelist <- function(g){
             to   = g %N>% pull(name) %>% .[to]
         ) %>%
         select(from, to)
+}
+
+gcm_descendants_fingerprint <- function(g, vocab = NULL,
+                                        full_table = FALSE) {
+    if (inherits(g, "tbl_graph")) g <- tidygraph_to_dagitty(g)
+    if (is.null(vocab)) {
+        S <- gcm_nodelist(g, as_tibble = FALSE)
+    } else {
+        S <- vocab
+    }
+    
+    df.full <- 
+        expand_grid(x = S, y = S) |> 
+        filter(x != y) |> 
+        mutate(
+            y_ancestors = map(
+                y, 
+                \(v)
+                dagitty::ancestors(g, v)
+            )
+        ) |> 
+        mutate(causal_path = pmap_lgl(list(x,y_ancestors),
+                                  \(xx, yy)
+                                  xx %in% yy
+                                  )) 
+    if (full_table) {
+        return(df.full)
+    } else {
+        df.full |> 
+            select(-y_ancestors) |> 
+            distinct()
+    }
+    
 }
 
 gcm_possible_edges <- function(g) {
@@ -428,6 +467,25 @@ gcm_adj_fingerprint <- function(g, vocab = NULL,
         )
 }
 
+# Unconditional (marginal) independence, from a graph -------------
+gcm_marginal_independence <- function(g, S = NULL) {
+    if (inherits(g, "tbl_graph")) g <- tidygraph_to_dagitty(g)
+    if (is.null(S)) {
+        S <- gcm_nodelist(g, as_tibble = FALSE)
+    }
+    
+    pairs <- expand_grid(x = S, y = S) |> 
+        filter(x != y)
+    
+    pairs |>
+        mutate(
+            independent = map2_lgl(
+                x, y,
+                \(xx, yy) dagitty::dseparated(g, xx, yy, character(0))
+            )
+        )
+}
+
 
 # ========================================= #
 # ======== Causal dissimilarities ===========
@@ -458,46 +516,111 @@ L0_dissimilarity_vocab <- function(gX, gY, return_list = FALSE, kappa = 1) {
 }
 
 
-
-
-# L1 dissimilarities ----------------
 L1_dissimilarity_ci <- function(
-        gX = NULL, gY = NULL, 
+        gX = NULL, gY = NULL,
         fpX = NULL, fpY = NULL,
         return_list = FALSE,
         max_cond = Inf,
         restriction_to_shared = TRUE,
         kappa = 1,
-        include_separability = TRUE) {
+        include_separability = TRUE,
+        return_marginal_independence = FALSE) {
     
+    S <- intersect(gcm_nodelist(gX), gcm_nodelist(gY)) |> pull(name)
+    
+    if (is.null(fpX)) fpX <- gcm_ci_fingerprint(gX, vocab = S, max_cond = max_cond)
+    if (is.null(fpY)) fpY <- gcm_ci_fingerprint(gY, vocab = S, max_cond = max_cond)
+    
+    if (include_separability) {
+        fpX <- bind_rows(fpX, fpX |> distinct(x, y) |> mutate(Z = list("CI")))
+        fpY <- bind_rows(fpY, fpY |> distinct(x, y) |> mutate(Z = list("CI")))
+    }
+    
+    if (restriction_to_shared) {
+        Splus <- union(S, "CI")
+        fpX <- fpX |> filter(x %in% S, y %in% S, map_lgl(Z, \(z) all(z %in% Splus)))
+        fpY <- fpY |> filter(x %in% S, y %in% S, map_lgl(Z, \(z) all(z %in% Splus)))
+    }
+    
+    gamma_diff  <- dplyr::symdiff(fpX, fpY)
+    gamma_union <- dplyr::union(fpX, fpY)
+    d <- nrow(gamma_diff) / (nrow(gamma_union) + kappa)
+    
+    marg_X <- marg_Y <- NULL
+    if (return_marginal_independence) {
+        marg_X <- gcm_marginal_independence(fpX, S)
+        marg_Y <- gcm_marginal_independence(fpY, S)
+    }
+    
+    if (!return_list) {
+        if (return_marginal_independence) {
+            return(list(d = d, marginal_independence_X = marg_X, marginal_independence_Y = marg_Y))
+        }
+        return(d)
+    } else {
+        out <- list(d = d, gammaX = fpX, gammaY = fpY, S = S)
+        if (return_marginal_independence) {
+            out$marginal_independence_X <- marg_X
+            out$marginal_independence_Y <- marg_Y
+        }
+        return(out)
+    }
+}
+
+# L1 dissimilarities ----------------
+L1_dissimilarity_ci <- function(
+        gX = NULL, gY = NULL,
+        fpX = NULL, fpY = NULL,
+        return_list = FALSE,
+        max_cond = Inf,
+        restriction_to_shared = TRUE,
+        kappa = 1,
+        # include the binary as well - maybe change to indep
+        include_separability = TRUE,
+        include_marginal_dependence = TRUE) {
+
     S <- intersect(gcm_nodelist(gX),gcm_nodelist(gY)) |> pull(name)
-    
+
     if (is.null(fpX)) {
         fpX <- gcm_ci_fingerprint(gX, vocab = S, max_cond = max_cond)
     }
-    
+
     if (is.null(fpY)) {
         fpY <- gcm_ci_fingerprint(gY, vocab = S, max_cond = max_cond)
     }
-    
-    
+
+
     if (include_separability) {
-        fpX <- 
+        fpX <-
             bind_rows(
                 fpX,
-                fpX |> 
-                    distinct(x,y) |> 
+                fpX |>
+                    distinct(x,y) |>
                     mutate(Z = list("CI"))
             )
-        fpY <- 
+        fpY <-
             bind_rows(
                 fpY,
-                fpY |> 
-                    distinct(x,y) |> 
+                fpY |>
+                    distinct(x,y) |>
                     mutate(Z = list("CI"))
             )
     }
     
+    if (include_marginal_dependence) {
+        marg_X <- gcm_marginal_independence(gX, S) |>
+            filter(!independent) |> 
+            distinct(x,y) |> 
+            mutate(Z = list("Marginally dependent"))
+        marg_Y <- gcm_marginal_independence(gY, S) |> 
+            filter(!independent) |> 
+            distinct(x,y) |> 
+            mutate(Z = list("Marginally dependent"))
+        
+        fpX <- bind_rows(fpX, marg_X)
+        fpY <- bind_rows(fpY, marg_Y)
+    }
+
     if (restriction_to_shared) {
         Splus <- union(S, "CI")
         fpX <- fpX |>
@@ -513,13 +636,13 @@ L1_dissimilarity_ci <- function(
                 map_lgl(Z, \(z) all(z %in% Splus))
             )
     }
-    
-    
+
+
     gamma_diff <- dplyr::symdiff(fpX, fpY)
     gamma_union <- dplyr::union(fpX, fpY)
-    
+
     d <- nrow(gamma_diff) / (nrow(gamma_union) + kappa)
-    
+
     if (!return_list) {
         return(d)
     } else {
@@ -583,6 +706,7 @@ L2_dissimilarity_adj_set <- function(
         restriction_to_shared = TRUE,
         restriction_to_causal = FALSE,
         include_identifiability = TRUE,
+        include_ancestral = TRUE,
         adj_type = "canonical") {
     
     S <- intersect(gcm_nodelist(gX),gcm_nodelist(gY)) |> pull(name)
@@ -610,6 +734,25 @@ L2_dissimilarity_adj_set <- function(
                 fpY |> 
                     distinct(x,y) |> 
                     mutate(Z = list("Identifiable"))
+            )
+    }
+    
+    if (include_ancestral) {
+        fpX <- 
+            bind_rows(
+                fpX,
+                gcm_descendants_fingerprint(gX) |> 
+                    filter(causal_path) |> 
+                    distinct(x,y) |> 
+                    mutate(Z = list("Ancestral"))
+            )
+        fpY <- 
+            bind_rows(
+                fpY,
+                gcm_descendants_fingerprint(gY) |> 
+                    filter(causal_path) |> 
+                    distinct(x,y) |> 
+                    mutate(Z = list("Ancestral"))
             )
     }
     

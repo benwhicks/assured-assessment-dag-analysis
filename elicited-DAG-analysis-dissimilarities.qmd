@@ -26,6 +26,11 @@ export_and_save_every_model <- FALSE
 
 # TODO
 
+## Considering adding to L1, L2 diss:
+
+- Might already be there, but Independence / Dependence for L1
+- Similarly, X->Y or not (perhaps as pa() style instead, so squiggle arrow) for L2.
+
 ## Check new definitions throughout:
 
 
@@ -170,8 +175,8 @@ Supposing we have some function $\operatorname{d}(x,y) \rightarrow R$
 +---------------------------------+---------------------------------+
 | Causal level                    | Example Statements; $\gamma$    |
 +=================================+=================================+
-| $\mathcal{L}_0$                 | List of variables (the          |
-|                                 | vocabulary)                     |
+| $\mathcal{L}_0$ : Description / | List of variables (the          |
+|    bounding                     | vocabulary)                     |
 +---------------------------------+---------------------------------+
 | $\mathcal{L}_1$ : Association / | Implied conditional             |
 | Seeing                          | independencies;                 |
