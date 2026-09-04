@@ -151,7 +151,7 @@ dag_m3 <- dagitty('dag M3 {
 CD.LMS [pos="-0.156,0.899"]
 CD.Str [pos="-1.134,0.874"]
 Grade [outcome,pos="-0.670,0.870"]
-H.AI [pos="0.472,-0.424"]
+H.AI.evil [pos="0.472,-0.424"]
 H.Peer [pos="-0.160,-0.215"]
 H.Tut [pos="-0.003,-0.600"]
 LD.Task [pos="-1.245,-0.050"]
@@ -164,8 +164,8 @@ T.Kn.AI [pos="-1.380,0.414"]
 T.Kn.Ass [pos="-1.720,0.137"]
 T.Cp.Sub [pos="-1.301,-0.830"]
 T.Cp.KnStu [pos="-1.638,-0.366"]
-H.AI -> H.Tut
-H.AI -> S.Act.Perf
+H.AI.evil -> H.Tut
+H.AI.evil -> S.Act.Perf
 H.Peer -> CD.LMS
 H.Peer -> S.Kn
 H.Peer -> S.Kn.Aca

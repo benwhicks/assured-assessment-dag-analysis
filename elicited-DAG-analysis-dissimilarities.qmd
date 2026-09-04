@@ -272,296 +272,6 @@ claim in the fine grained DAG. More formally, we define:
 
 $$\varphi\text{-}\operatorname{deg}_{\mathcal{L}_i}(G)=\frac{|\ \{ [\gamma]_{\varphi} \in \Gamma_{i}(\varphi G): \nexists \ \eta \in \Gamma_i(G) \text{ s.t. } \varphi(\eta) = [\gamma]_{\varphi} \}\ |}{|\ \varphi\Gamma_{i}(G) \cup  \Gamma_{i}(\varphi G)  |}$$
 
-## Causal $\mathcal{L}$-consistancy
-
-For this we needed a measure of $\mathcal{L}$-consistency between two
-models, but with the constraints:
-
-- There is no knowledge of the underlying distributions or functions -
-  these are graphical models only. This rules out much of the prior
-  work.
-- Models may have a meaningful disagreement in what nodes to include,
-  and their structure. Consistency between models will need to handle
-  examining only a shared subset of the nodes, $\mathcal{S}$.
-- Models may examine the space at different levels of granualarity. They
-  might need to be coarsened / clustered first in such a way that it
-  preserves their causal structure. Fortunately there is work on this,
-  however we also want to preserve the semantics of each model (what
-  each node describes), not purely the causal implications.
-
-As such we develop:
-
-- $\mathcal{L}_i\text{-}\operatorname{d_{\overrightarrow{xy}}}$,
-  $i \in \{1,2\}$: A measure of the discrepancy, or distance, between
-  two GCMs. Note that this is a *directional* measure, as it examines
-  the preservation of $\mathcal{L}_i$ statements in model $x$ that
-  remain in model $y$. When averaged out over each direction this is
-  shortened to $\mathcal{L}_i\text{-}\mathrm{d}$. If two models
-  $\mathcal{G_x}, \mathcal{G_y}$ have
-  $\mathcal{L}_{1}\text{-}\mathrm{d}(\mathcal{G}_x,\mathcal{G}_y)=0$
-  then they will agree on all their implied conditional independence
-  relationships amongst any shared nodes, and if
-  $\mathcal{L}_{2}\text{-}\mathrm{d}(\mathcal{G}_x,\mathcal{G}_y)=0$
-  then all the recipies for adjustment amongst the shared nodes in
-  $\mathcal{G}_x$ are preserved in $\mathcal{G}_y$.
-- A measure of $\mathcal{L}_i$-degradation under some coarsening
-  function, $\varphi$, that maps a fine-grained GCM to a clustered GCM
-  by merging some nodes together.
-
-These are built from the principles articulated in Schooltink et. al,
-were we are looking at some measure of the preservation of all the
-$\mathcal{L}_i$ algebraic statements about the GCM. These measures are
-not exhaustive, but rather choose the implied conditional independence
-relationships for $\mathcal{L}_1$ and the sets of adjustment sets for
-$\mathcal{L}_2$.
-
-### Defining L0-dissimilarity, distance
-
-With an abuse of the intended use of the notation
-$\mathcal{L}_0$-discrepancy will be simply a measure of the
-
-### Defining L1-discrepency
-
-Informally, this describes how consistent each model is with its implied
-Conditional Independence (CI) statements amongst its shared vocabulary
-(the shared nodes). Each CI relationship comes in the form of
-$\mathcal{I}=\langle X \perp\!\!\!\perp Y \mid \mathbf{Z} \rangle$ where
-$X,Y \in \mathbf{V}_\mathcal{G}$ and
-$\mathbf{Z} \subseteq \mathbf{V}^\mathcal{G}$, and we compute the set of
-all $\mathcal{I}^{G_a}$ and $\mathcal{I}^{G_b}$. From these we collect:
-
-- The independence relationships whose $X,Y$ are in the shared
-  vocabulary, ignoring $Z$. We denote this set of $X,Y$ pairs
-  $\mathcal{I}_{X,Y\in\mathcal{S}}^{G_a}$ for those coming from model
-  $G_a$.
-- The independence relationships whose $X,Y,\mathbf{Z}$ are in the
-  shared vocabulary. We denote this set of $X,Y,\mathbf{Z}$ tuples as
-  $\mathcal{I}_{\mathcal{S}}^{G_a}$.
-
-The metric is formed by comparing:
-
-- The union of all statements:
-  $\mathcal{I}^{ab}_{\mathcal{S}}=\mathcal{I}_{\mathcal{S}}^{G_a} \cup \mathcal{I}_{\mathcal{S}}^{G_b}$
-
-THIS HAS CHANGED - NEED TO ADJUST. Now includes X,Y sets of CI in
-fingerprint where Z is not in shared nodes. So the total space is CI
-sets of all shared nodes in both (any Z) as well as CI sets X,Y,Z
-shared. Distance just 1 - Jaccard of this combined sets.
-
-Let $\mathcal{G}_X, \mathcal{G}_Y$ be causal DAGs over vertex sets
-$\mathbf{V}_X, \mathbf{V}_Y$, with shared vertices
-$\mathcal{S} = \mathbf{V}_X \cap \mathbf{V}_Y$. The evaluated pairs are
-$$\mathcal{P} \;=\;
-\bigl\{(v_x,v_y) \in \mathcal{S} \times \mathcal{S} \,:\, x \neq y \bigr\},
-\qquad\text{or, under the causal restriction,}$$
-
-$$\mathcal{P}^{c} \;=\;
-\bigl\{(x,y) \in \mathcal{S} \times \mathcal{S} \,:\,
-x \in \operatorname{an}_{\mathcal{G}_X}(y) \cup
-      \operatorname{an}_{\mathcal{G}_Y}(y),\ x \neq y \bigr\},$$
-
-$\mathcal{L}_i\text{-}\operatorname{d_{xy}}$
-
-### Defining L2-discrepency
-
-## Causal Consistency when Clustering
-
-### AI slop description
-
-## AI generated description from code
-
-L1 consistency between causal graphs
-
-Claims and fingerprints. For a DAG $\mathcal{G}$ and a vocabulary
-$\mathbf{W} \subseteq \mathbf{V}_{\mathcal{G}}$, an \emph{L1 claim} is a
-conditional-independence statement
-$\langle x \perp\!\!\!\perp y \mid \mathbf{Z} \rangle$ with
-$\{x, y\} \subseteq \mathbf{W}$, $x \neq y$, and
-$\mathbf{Z} \subseteq \mathbf{W} \setminus \{x, y\}$, where the
-unordered pair $\{x,y\}$ and the set $\mathbf{Z}$ are taken in canonical
-order. The \emph{L1 fingerprint} of $\mathcal{G}$ over $\mathbf{W}$ is
-its full set of true claims, $$\mathcal{I}_{\mathcal{G}}(\mathbf{W})
-\;=\;
-\bigl\{\,
-\langle x \perp\!\!\!\perp y \mid \mathbf{Z} \rangle
-\;:\;
-x \perp_{d} y \mid \mathbf{Z}
-\ \text{in}\ \mathcal{G}
-\,\bigr\},$$ evaluated by d-separation \emph{in the full graph}
-$\mathcal{G}$. Because a d-separation statement among variables in
-$\mathbf{W}$, with conditioning set inside $\mathbf{W}$, holds in
-$\mathcal{G}$ if and only if it holds in the latent projection of
-$\mathcal{G}$ onto $\mathbf{W}$, $\mathcal{I}_{\mathcal{G}}(\mathbf{W})$
-is exactly the independence model of the marginal over $\mathbf{W}$
-(Verma & Pearl 1990; Richardson & Spirtes 2002). No claim is ever edited
-to fit the vocabulary: a statement whose conditioning set exits
-$\mathbf{W}$ is simply not a claim over $\mathbf{W}$. Moreover,
-$\mathcal{I}_{\mathcal{G}}(\mathbf{W}) =
-\mathcal{I}_{\mathcal{G}'}(\mathbf{W})$ if and only if the marginals of
-$\mathcal{G}, \mathcal{G}'$ over $\mathbf{W}$ are Markov equivalent, so
-fingerprint comparison operates at the level of equivalence classes, not
-representations.
-
-### Directional divergence.
-
-For two fingerprints over a common vocabulary, with reference
-$\mathcal{G}_X$ and $\mathcal{S} = \mathbf{V}_X \cap \mathbf{V}_Y$,
-write $\mathcal{I}_X = \mathcal{I}_{\mathcal{G}_X}(\mathcal{S})$ and
-$\mathcal{I}_Y = \mathcal{I}_{\mathcal{G}_Y}(\mathcal{S})$. Each claim
-carries unit weight, and $$d^{\mathcal{L}_1}_{X \to Y}
-\;=\;
-\begin{cases}
-\dfrac{\bigl|\, \mathcal{I}_X \setminus \mathcal{I}_Y \,\bigr|}
-      {\bigl|\, \mathcal{I}_X \,\bigr|}
-  & \mathcal{I}_X \neq \emptyset \\[10pt]
-0 & \mathcal{I}_X = \mathcal{I}_Y = \emptyset
-    \quad\text{(agreed saturation)} \\[4pt]
-\text{undefined}
-  & \mathcal{I}_X = \emptyset,\ \mathcal{I}_Y \neq \emptyset,
-\end{cases}
-\qquad
-C^{\,1}_{X \to Y} = 1 - d^{\,1}_{X \to Y},$$ with $d^{\,1}_{Y \to X}$
-obtained by exchanging roles. The conventions mirror the L2 metric: an
-empty fingerprint asserts a saturated dependence model, so mutual
-emptiness is a genuine shared claim (one unit of evidence), while a
-one-sidedly empty reference is agnostic in its own direction --- the
-disagreement is carried entirely by the reverse direction, in which
-every claim of the non-empty model is lost. Symmetric summaries follow
-as $$J^{\,1}(X, Y)
-= \frac{|\mathcal{I}_X \cap \mathcal{I}_Y|}{|\mathcal{I}_X \cup \mathcal{I}_Y|}
-\quad (\,:= 1 \text{ when } \mathcal{I}_X \cup \mathcal{I}_Y = \emptyset\,),
-\qquad
-\mathcal{I}_X = \mathcal{I}_Y
-\iff
-\text{marginal Markov equivalence over } \mathcal{S}.$$
-
-### Coarsening degradation.
-
-Let $f : \mathbf{V}_{\mathcal{G}} \to \mathbf{C}$ be an admissible
-coarsening with member map $m(C) = f^{-1}(C)$ and quotient
-$\mathcal{G}/f$. The cluster-level query population is
-$\{\langle A \perp\!\!\!\perp B \mid \mathbf{Z} \rangle : A, B \in \mathbf{C},\ \mathbf{Z} \subseteq \mathbf{C} \setminus \{A, B\}\}$,
-answered twice:
-
-$$\mathcal{I}^{\uparrow}_{\mathcal{G}}
-= \bigl\{ \langle A \perp\!\!\!\perp B \mid \mathbf{Z}\rangle :
-  m(A) \perp_{d} m(B) \mid \textstyle\bigcup_{C \in \mathbf{Z}} m(C)
-  \ \text{in}\ \mathcal{G} \bigr\},
-\qquad
-\mathcal{I}_{\mathcal{G}/f}
-= \mathcal{I}_{\mathcal{G}/f}(\mathbf{C}),$$
-
-the \emph{lifted} fine claims (set-level d-separation) and the
-quotient's own claims. By the soundness of C-DAG d-separation (Anand et
-al. 2023), every quotient claim lifts to a true fine claim:
-
-$$\mathcal{I}_{\mathcal{G}/f} \;\subseteq\; \mathcal{I}^{\uparrow}_{\mathcal{G}},
-\qquad\text{hence}\qquad
-d^{\,1}_{\,\mathcal{G}/f \,\to\, \mathcal{G}} \equiv 0,$$ so the
-coarse-to-fine direction is a theorem (its empirical violation is a bug
-detector), and the entire L1 degradation is carried by the single
-statistic
-
-$$d^{\,1}_{\text{deg}}(f) 
-\;=\;
-d^{\,1}_{\,\mathcal{G} \to \mathcal{G}/f}
-\;=\;
-\frac{\bigl|\, \mathcal{I}^{\uparrow}_{\mathcal{G}} \setminus
-      \mathcal{I}_{\mathcal{G}/f} \,\bigr|}
-     {\bigl|\, \mathcal{I}^{\uparrow}_{\mathcal{G}} \,\bigr|},$$
-
-the share of the fine model's cluster-resolution independence claims
-that the quotient fails to preserve. Claims below cluster resolution ---
-those whose variables or conditioning sets are not unions of whole
-clusters --- are excluded from the query population by construction;
-their loss is a property of the vocabulary $f$ induces, not of the
-quotient's fidelity within it.
-
-\\subsection\*{L2 consistency between causal graphs}
-
-i.e. pairs for which at least one model asserts a causal effect.
-
-\paragraph{Identifiability and adjustment sets.}
-
-For a graph $\mathcal{G}$ and pair $(x,y)$, let
-$\mathbf{Z}_{\mathcal{G}}(x,y)$ denote a \emph{complete} adjustment set:
-either the canonical set $\operatorname{Adjust}_{\mathcal{G}}(x,y)$
-(Perkovi'c et al. 2018) or the optimal set
-$\mathbf{O}_{\mathcal{G}}(x,y)$ (Henckel et al. 2022). Completeness
-means $\mathbf{Z}_{\mathcal{G}}(x,y)$ is valid if and only if any valid
-adjustment set exists, so the identifiability indicator is well-defined
-as $$\iota_{\mathcal{G}}(x,y) = 1
-\;\iff\;
-P\bigl(y \mid \operatorname{do}(x)\bigr)
-= \sum_{\mathbf{z}} P(y \mid x, \mathbf{z})\,P(\mathbf{z})
-\quad\text{for}\quad
-\mathbf{Z} = \mathbf{Z}_{\mathcal{G}}(x,y).$$
-
-Write
-$\tilde{\mathbf{Z}}_{\mathcal{G}}(x,y) = \mathbf{Z}_{\mathcal{G}}(x,y) \cap \mathcal{S}$
-for the shared-vertex restriction, and abbreviate
-$\iota_X = \iota_{\mathcal{G}_X}(x,y)$,
-$\tilde{\mathbf{Z}}_X = \tilde{\mathbf{Z}}_{\mathcal{G}_X}(x,y)$, etc.
-
-#### Refining the slop
-
-Might use $\iota_X \ge \iota_Y$ as a filter on P, then everything is
-easier.
-
-Or, if we let $\mathcal{P}$ be only the non-vacuous ones, the
-$\mathcal{P}_{\iota_X \ge \iota_Y}$ then we can remove the weights
-entirely and have:
-
-\$\$ \delta\_{X \to Y}(x,y) =
-
-\begin{cases}
-\max\bigl\{|\tilde{\mathbf{Z}}_X|,\, 1\bigr\}
-  & \iota_X = 1,\ \iota_Y = 0
-    \quad\text{(claim contradicted: all recommendations fail)} \\[4pt]
-0 & \iota_X = \iota_Y = 0
-    \quad\text{(agreed non-identifiability)} \\[4pt]
-\bigl|\tilde{\mathbf{Z}}_X \setminus \tilde{\mathbf{Z}}_Y\bigr|
-  & \iota_X = \iota_Y = 1
-    \quad\text{(omitted recommendations)} \\[4pt]
-    \text{undefined} & \iota_X = 0,\ \iota_Y = 1 
-    \quad\text{(no claim from X?)}
-    
-\end{cases}
-
-\$\$
-
-We then aggregate across all pairs in the model, normalising by the
-maximum possible score the model could have obtained:
-
-$$\qquad
-d_{X \to Y} =
-\frac{\displaystyle\sum_{\mathcal{P}:\, \iota_X \geq \iota_Y}
-      \delta_{X \to Y}(x,y)}
-     {\displaystyle\sum_{\mathcal{P}:\, \iota_X \geq \iota_Y}
-      \max\bigl\{|\tilde{\mathbf{Z}}_X(x,y)|,\, 1\bigr\}}$$
-
-# Theory: Graph coarsening
-
-Given a (fine-grained) DAG with graph $G$ we may describe a cluster DAG
-(CDAG) by merging some nodes together into clusters. This new
-(coarse-grained) DAG will be $G^C$ and edges are formed by including
-edges between clusters if there existed edges between nodes in those
-clusters in the fine-grained DAG. A node $V_i$ in the fine grained model
-$G$ is now clustered into a higher level cluster node, $[V_i]$, in the
-CDAG $G^C$. More formally, we describe a coarsening map
-$\varphi:\mathbf{V}_G \rightarrow \mathbf{V}_{G^C}$ so that
-$\varphi(G)=\varphi G=G^{C}$. The coarsening function $\varphi$ induces
-an equivalence relation $\sim _\varphi$ on the nodes of $\mathbf{V}_{G}$
-where $V_i \sim_\varphi V_j$ iff $\varphi (V_i) = \varphi (V_j)$, i.e.
-both nodes map to the same cluster under the coarsening $\varphi$. These
-cluster nodes can then be described in terms of equivalence classes
-within the fine-grained DAG as $[V_i]_{\varphi}$. Edge inclusion in the
-cluster DAG is governed by these equivalence relations, so an edge in
-the coarsened CDAG exists if there exists an edge between members of the
-equivalence classes in the fine-grained DAG:
-$\exists \ \langle [V_i]_{\varphi} \rightarrow [V_j]_{\varphi}\rangle_{G^C}$
-iff $\exists \ \langle V_{i'} \rightarrow V_{j'}\rangle_G$ such that
-$V_i \sim_{\varphi} V_{i'},V_j \sim_{\varphi} V_{j'}$.
 
 
 # Defining dissimilarity functions
@@ -593,7 +303,8 @@ dagc1w <- dagitty::dagitty(
     "dag{
     X -> Y;
     X <- Z -> Y;
-    W -> Z
+    W <- Z;
+    X <- W
     }"
 )
 
@@ -675,18 +386,20 @@ vntPlotC1 <- plot_vnt_dag(vnt.tdags$Cluster1)
 vntPlotC2 <- plot_vnt_dag(vnt.tdags$Cluster2)
 vntPlotC1W <- plot_vnt_dag(vnt.tdags$Cluster1W)
 
-vntPlotF1A <- plot_vnt_dag(vnt.tdags$Fine1a) + 
+vntPlotF1A <- 
+    plot_vnt_dag(vnt.tdags$Fine1a) + 
     annotate(geom = "rect", 
-             xmin = -0.05, xmax = 0.65, ymin = -0.1, ymax = 0.3, 
-             fill = "grey", linewidth = 1, colour = "black", linetype = 5, alpha = 0.2) +
+             xmin = -0.1, xmax = 0.7, ymin = -0.1, ymax = 0.3, 
+             fill = "grey", linewidth = 1, 
+             colour = "black", linetype = 5, alpha = 0.2) +
     annotate(geom = "rect", 
-             xmin = 0.65, xmax = 1.35, ymin = 0.9, ymax = 1.1, 
+             xmin = 0.6, xmax = 1.4, ymin = 0.9, ymax = 1.1, 
              fill = "grey", linewidth = 1, colour = palette.colors()[[3]], linetype = 5, alpha = 0.2)
 
 vntPlotF1B <- plot_vnt_dag(vnt.tdags$Fine1b) +
     annotate(
         geom = "rect", 
-        xmin = -0.05, xmax = 0.65, ymin = -0.1, ymax = 0.3, 
+        xmin = -0.1, xmax = 0.7, ymin = -0.1, ymax = 0.3, 
         fill = "grey", linewidth = 1, colour = "black", linetype = 5,
         alpha = 0.2) 
 
@@ -732,7 +445,7 @@ deg.L2.FA <- gcm_cluster_L2_degradation(vnt.tdags$Fine1a, first_letter_coarsen)$
 deg.L2.FB <- gcm_cluster_L2_degradation(vnt.tdags$Fine1b, first_letter_coarsen)$degradation
 ```
 
-## L-dissimilarities
+## $\mathcal{L}$-dissimilarities
 
 Given a base DAG of
 $\mathcal{G}=\{X \rightarrow Y\} \cup \{X \leftarrow Z \rightarrow Y\}$
@@ -741,41 +454,58 @@ similar graphs, one where we switch the direction of an arrow,
 $\mathcal{G}^{\overleftarrow{xy}}$ and one where we add a node,
 $\mathcal{G}^{+w}$.
 
-```{r figure-Ldist-vignette}
+```{r figure-Ldist-vignette, fig.height=3}
+library(ggtext)
 
 dLstringC1_C1W <- str_c(
     "Node W added",
-    "\nL0 = ", 
+    "<br>L<sub>0</sub>-d = ", 
     round(d.L0.C1_C1W,2), 
-    "\nL1 = ", 
+    "<br>L<sub>1</sub>-d = ", 
     round(d.L1.C1_C1W, 2),
-    "\nL2 = ", 
+    "<br>L<sub>2</sub>-d = ", 
     round(d.L2.C1_C1W, 2),
-    '\nMean = ', 
+    "<br>L-d = ", 
     round((d.L0.C1_C1W + 
                d.L1.C1_C1W + 
-               d.L2.C1_C1W) /3, 2)
-)
+               d.L2.C1_C1W) /3, 2))
 
 dLstringC1_C2 <- str_c(
     "Edge reversed",
-    "\nL0 = ", 
+    "<br>L<sub>0</sub>-d = ", 
     round(d.L0.C1_C2,2), 
-    "\nL1 = ", 
+    "<br>L<sub>1</sub>-d = ", 
     round(d.L1.C1_C2, 2),
-    "\nL2 = ", 
+    "<br>L<sub>2</sub>-d = ", 
     round(d.L2.C1_C2, 2),
-    "\n Mean L = ", 
+    "<br>L-d = ", 
     round((d.L0.C1_C2 + 
                d.L1.C1_C2 + 
                d.L2.C1_C2) /3, 2)
 )
 
-(vntPlotC1W +
-        annotate("text", x = 1, y = 0.3, label = dLstringC1_C1W)) + 
+p.vignette.diss <- (
+    vntPlotC1W +
+                        geom_richtext(
+        data = data.frame(x = 1, y = 0.3),
+        aes(x = x, y = y, label = dLstringC1_C1W),
+        fill = NA, label.color = "lightgrey",   # no box/border around the text
+        inherit.aes = FALSE)
+    ) +
     (vntPlotC1 + 
         annotate("text", x = 1, y = 0.3, label = "Initial DAG")) + 
-    (vntPlotC2 +                                                                                      annotate("text", x = 1, y = 0.3, label = dLstringC1_C2))
+    (vntPlotC2 +                                                                                      geom_richtext(
+        data = data.frame(x = 1, y = 0.3),
+        aes(x = x, y = y, label = dLstringC1_C2),
+        fill = NA, label.color = "lightgrey",   # no box/border around the text
+        inherit.aes = FALSE))
+
+ggsave("figures/fig--vignette-causal-dissimilarity.png", 
+       height = 4, width = 12,
+       plot = p.vignette.diss)
+
+p.vignette.diss
+
 ```
 
 We can see that the mean distance is similar between $\mathcal{G}$ and
@@ -790,7 +520,7 @@ that $\operatorname{d}^{\mathcal{L}_1}$.
 > largely $\mathcal{L}_{1,2}$-consistent if the shared nodes have
 > similar causal implications.
 
-## L-degradation
+## $\mathcal{L}$-degradation
 
 Here we examine the same baseline DAG, but instead look at two
 'finer-grained' DAGs that have more detail in the causal structure, but
@@ -803,11 +533,18 @@ that only clusters on $X$ but has a more problematic causal structure
 for this coarsening. The coarsening map, $\phi$ is simply grouping the
 variables by their first letter.
 
-```{r figure-L-degradation-vignette}
-(vntPlotF1A ) + 
+```{r figure-L-degradation-vignette, fig.height=3}
+p.vignette.deg <- 
+    (vntPlotF1A ) + 
     (vntPlotC1 + 
         annotate("text", x = 1, y = 0.3, label = "Cluster DAG")) + 
     (vntPlotF1B)
+
+ggsave("figures/fig--vignette-causal-degradation.png", 
+       height = 4, width = 12,
+       plot = p.vignette.deg)
+
+p.vignette.deg
 ```
 
 Under this coarsening we see:
@@ -830,6 +567,10 @@ $Z \rightarrow X_1 \leftarrow X_2 \rightarrow Y$ is open but non-causal.
 This disagreement cannot be reconciled when we form the cluster
 $[X]=\{X_1, X_2\}$ in the cluster DAG.
 We see the $\mathcal{L}_1$ degradation because the cluster DAG is fully connected, but the fine DAG has $X_2 \perp Z$, which is lost moving to the cluster DAG.
+
+> Thought: Could the causal degradation work equally well for projections, and embeddings?
+
+### Relationship with causal consistency of 
 
 
 ## Diabolic trio breaks the triangle inequality
@@ -887,9 +628,9 @@ diabolic.Z <- tbl_graph(
 ```
 
 ```{r}
-plot(diabolic.X)
-plot(diabolic.Y)
-plot(diabolic.Z)
+gcm_qplot(diabolic.X)
+gcm_qplot(diabolic.Y)
+gcm_qplot(diabolic.Z)
 
 ```
 
@@ -950,7 +691,7 @@ node_type_colours <- c(
   "Learning design"    = "#56B4E9"
 )
 
-wrap_width <- 13
+wrap_width <- 10
 
 hue1 <- palette.colors(3, palette = "Okabe-Ito")[[2]]
 hue2 <- palette.colors(3, palette = "Okabe-Ito")[[3]]
@@ -980,22 +721,22 @@ ddags <- list(
     )
 
 tdags <- list(
-    "M1" = dag_to_tidy_graph(dag_m1), 
-    "M2" = dag_to_tidy_graph(dag_m2), 
-    "M3" = dag_to_tidy_graph(dag_m3), 
-    "M4" = dag_to_tidy_graph(dag_m4),
-    "M5" = dag_to_tidy_graph(dag_m5), 
-    "M6" = dag_to_tidy_graph(dag_m6) |> 
+    "M1" = dagitty_to_tidygraph(dag_m1), 
+    "M2" = dagitty_to_tidygraph(dag_m2), 
+    "M3" = dagitty_to_tidygraph(dag_m3), 
+    "M4" = dagitty_to_tidygraph(dag_m4),
+    "M5" = dagitty_to_tidygraph(dag_m5), 
+    "M6" = dagitty_to_tidygraph(dag_m6) |> 
     filter( # this removes feedback link to next learning cycle
         !str_detect(name, "Post")), 
-    "M7" = dag_to_tidy_graph(dag_m7), 
-    "M8" = dag_to_tidy_graph(dag_m8))
+    "M7" = dagitty_to_tidygraph(dag_m7), 
+    "M8" = dagitty_to_tidygraph(dag_m8))
 
 ddags.raw <- ddags
 
 ddags <- 
     imap(tdags, \(g, n)
-         tidy_graph_to_dag(g)) |> 
+         tidygraph_to_dagitty(g)) |> 
     map(\(d) { 
         dagitty::outcomes(d) <- "Grade"
         d}) |> 
@@ -1292,22 +1033,25 @@ code_node_measurability <- function(node) {
     case_when(
         # Student
         node == "S.Att.SocCap" ~ "PO", # check
-        node == "S.Att.Nro" ~ "O", # check
-        node == "S.Att.Eq" ~ "DW", # check
-        node == "S.Att.HSk" ~ "L", # check
+        node == "S.Att.Nro" ~ "O", 
+        node == "S.Att.Eq" ~ "DW", 
+        node == "S.Att.HSk" ~ "PO", 
         node == "S.Act.AIstrat" ~ "L",
         node == "S.Act.Fb" ~ "L",
         node == "S.Act.Fb.Post" ~ "L",
         str_detect(node, "^S\\.Act") ~ "PO", 
         str_detect(node, "^S\\.Kn") ~ "PO", 
-        str_detect(node, "^S") ~ "L", # Latent
+        str_detect(node, "^S") ~ "L", 
         # Help
+        node == "H.AI.Agent" ~ "O", # within system tool 
         node == "H.other.evil" ~ "L",
         node == "H.Peer" ~ "L",
+        node == "H.AI.evil" ~ "PO", # Potentially observable
         node == "H.AI.evil.code" ~ "PO", # Potentially observable
         node == "H.AI.evil.write" ~ "PO",
-        node == "H.AI.evil.write" ~ "PO",
-        str_detect(node, "^H\\.AI") ~ "PO",
+        str_detect(node, "^H\\.AI") ~ "PO", # not trying to hide
+        str_detect(node, "^H\\.Tu") ~ "PO",
+        str_detect(node, "^H\\.Ment") ~ "PO",
         str_detect(node, "^H") ~ "L",
         # Assessment
         node == "Grade" ~ "DW",
@@ -1316,10 +1060,11 @@ code_node_measurability <- function(node) {
         # Learning data
         node == "CD.LMS" ~ "DW",
         str_detect(node, "^CD\\.LMS") ~ "O",
-        node == "CD.Att" ~ "PO",
+        node == "CD.Att" ~ "O",
         node == "CD.Str" ~ "DW", # check
         node == "CD" ~ "O", # check
         # Learning design
+        str_detect(node, "^LD\\.Task") ~ "O",
         str_detect(node, "^LD") ~ "PO",
         # Teacher
         node == "T.Cp.UseAI" ~ "PO",
@@ -1333,59 +1078,61 @@ code_node_measurability <- function(node) {
 }
 
 coarsen_node_measurability <- function(ng_list) {
-    # Takes in a list of values of the nodes in a cluster node
-    case_when(
-            all(ng_list %in%  c("O", "DW")) ~ "Observable",
-            all(ng_list %in% c("PO")) ~ "Potentially observable",
-            all(ng_list == "L") ~ "Latent",
-            all(ng_list %in% c("PO", "L")) ~ "Likely latent",
-            all(ng_list %in% c("DW","O","PO")) ~ "Likely observable",
-            TRUE ~ str_c("Some observable (", 
-                         sum(ng_list %in% c("O","DW")), " of ", 
-                         n(), ")")) |> 
-            factor(levels = c(
-                "Latent", 
-                "Likely latent", 
-                "Potentially observable",
-                "Likely observable",
-                "Observable"))
-}
 
-coarsen_node_measurability <- function(ng_list, sep = ";") {
+  x <- str_squish(as.character(ng_list))
 
-  # one character vector of codes per node
-  codes <- lapply(str_split(ng_list, sep), \(x) {
-    x <- str_squish(x)
-    x[nzchar(x)]
-  })
-
-  flat    <- unlist(codes, use.names = FALSE)
-  n_nodes <- length(codes)
-  n_obs   <- sum(vapply(codes, \(x) length(x) > 0 && all(x %in% c("O", "DW")),
-                        logical(1)))
+  n_tot <- str_count(x, "[^;]+")
+  n_obs <- str_count(x, "(?<![A-Z])(O|DW)(?![A-Z])")
+  n_po  <- str_count(x, "(?<![A-Z])PO(?![A-Z])")
+  n_lat <- str_count(x, "(?<![A-Z])L(?![A-Z])")
 
   out <- case_when(
-    n_nodes == 0                      ~ NA_character_,
-    all(flat %in% c("O", "DW"))       ~ "Observable",
-    all(flat == "PO")                 ~ "Potentially observable",
-    all(flat == "L")                  ~ "Latent",
-    all(flat %in% c("PO", "L"))       ~ "Likely latent",
-    all(flat %in% c("DW", "O", "PO")) ~ "Likely observable",
-    TRUE ~ str_c("Some observable (", n_obs, " of ", n_nodes, ")")
+    is.na(x) | n_tot == 0        ~ NA_character_,
+    n_obs == n_tot               ~ "Observable",
+    n_po  == n_tot               ~ "Potentially observable",
+    n_lat == n_tot               ~ "Latent",
+    n_po + n_lat == n_tot        ~ "Likely latent",
+    n_obs + n_po == n_tot        ~ "Likely observable",
+    TRUE ~ str_c("Some observable (", n_obs, " of ", n_tot, ")")
   )
 
-  factor(out, levels = unique(c(
-    "Latent",
-    "Likely latent",
-    out,                       # keeps the dynamic label as a valid level
-    "Potentially observable",
-    "Likely observable",
-    "Observable"
-  )))
+  dyn <- sort(unique(out[str_starts(out, "Some observable") & !is.na(out)]))
+
+  factor(out, levels = c("Latent", "Likely latent", dyn,
+                         "Potentially observable", "Likely observable",
+                         "Observable"))
 }
 
 
 
+```
+
+``` {r attaching-node-measurability-to-dags}
+for (i in 1:length(tdags)) {
+    dag <- tdags[[i]] |> 
+        activate(nodes) |> 
+        mutate(measurable = code_node_measurability(name))
+    
+    tdags[[i]] <- dag
+}
+```
+
+``` {r}
+node_group_measurability <- 
+    tdags |> 
+    map(
+        \(d)
+        d |> 
+            activate(nodes) |> 
+            as_tibble() |> 
+            select(name, measurable)) |>
+    list_rbind(names_to = "Model") |> 
+    mutate(node_group = code_node_group(name)) |> 
+    group_by(node_group) |> 
+    summarise(m = str_c(measurable, collapse = ";")) |> 
+    mutate(measurability_node_group = coarsen_node_measurability(m)) |> 
+    distinct(node_group, measurability_node_group) |> 
+    arrange(measurability_node_group)
 ```
 
 ## Graph surgery
@@ -1605,21 +1352,37 @@ clean_node_group_cluster_graph <- function(cdag) {
         activate(edges) |> 
         mutate(path_type = "causal") |> 
         activate(nodes) |> 
-        mutate(node_type = code_node_type(name)) 
-    
-    if ("measurable" %in% names(cdag |> activate(nodes) |> as_tibble())) {
-        dag_out <- 
-            dag_out |> 
-            mutate(
-                measurability_node_group = coarsen_node_measurability(measurable)) 
-    }
-    
-    dag_out |> 
+        mutate(node_type = code_node_type(name))  |> 
+        left_join(
+            node_group_measurability, 
+            by = c("name" = "node_group")
+        ) |> 
         select(-any_of(c("nice_name", "node_group"))) |> 
         left_join(
-            node_group_nice_name |> 
-                rename(name = node_group),
-            by = "name") 
+            node_group_nice_name,
+            by = c("name" = "node_group")) 
+    
+    # Attaching node lists
+    obs_nodes <- dag_out |> 
+        activate(nodes) |> 
+        filter(
+            measurability_node_group %in% c(
+                "Observable", 
+                "Likely observable")) |> 
+        pull(name)
+    dag_out$observable <- obs_nodes
+    
+    pot_obs_nodes <- dag_out |> 
+        activate(nodes) |> 
+        filter(
+            measurability_node_group %in% c(
+                "Observable", 
+                "Likely observable",
+                "Potentially observable")) |> 
+        pull(name)
+    dag_out$potentially_observable <- pot_obs_nodes
+    
+    return(dag_out)
 }
 
 node_group_cluster_graph_from_merged <- 
@@ -1627,7 +1390,7 @@ node_group_cluster_graph_from_merged <-
     clean_node_group_cluster_graph()
     
 
-CDAGs_node_group <- 
+CDAGs <- 
     map(tdags, 
         \(g)
         gcm_cluster_graph(g, code_node_group) |> 
@@ -1636,12 +1399,12 @@ CDAGs_node_group <-
 node_group_cluster_graph_from_clusters <- 
     gcm_merge(
         gcm_merge(
-            gcm_merge(CDAGs_node_group[[1]], CDAGs_node_group[[2]]),
-            gcm_merge(CDAGs_node_group[[3]], CDAGs_node_group[[4]])
+            gcm_merge(CDAGs[[1]], CDAGs[[2]]),
+            gcm_merge(CDAGs[[3]], CDAGs[[4]])
         ),
         gcm_merge(
-            gcm_merge(CDAGs_node_group[[5]], CDAGs_node_group[[6]]),
-            gcm_merge(CDAGs_node_group[[7]], CDAGs_node_group[[8]])
+            gcm_merge(CDAGs[[5]], CDAGs[[6]]),
+            gcm_merge(CDAGs[[7]], CDAGs[[8]])
         )
     )
 
@@ -1942,53 +1705,73 @@ merged_coarse_layout <-
     create_layout(layout = "sugiyama") |>
     mutate(
         x = case_when(
-            name == "CD.Str" ~ 28,
-            name == "CD.Att" ~ 28,
-            name == "CD.LMS" ~ 28,
-            name == "S.Att" ~ x - 3,
-            name == "S.Act" ~ x - 0.4,
-            name == "S.Cp" ~ x - 2,
-            name == "T.Cp" ~ 30,
-            name == "S.EM" ~ x + 3,
-            name == "T.EM" ~ 30,
-            name == "T.Kn" ~ 31,
-            name == "LD.Task" ~ 31.0,
-            name == "LD.Gen" ~ 31,
-            name == "H.Tut" ~ x,
-            name == "H.AI.evil" ~ 39,
-            name == "H.AI.good" ~ x - 2,
-            name == "H.Gen" ~ 39,
-            name == "H.Cheat" ~ 38,
-            name == "S.Kn.Prior" ~ x + 20,
-            # name == "T.Aff.WrkLd" ~ x - 5,
+            name == "Grade" ~ 20,
+            name == "CD.Str" ~ 18.6,
+            name == "CD.Att" ~ 21.5,
+            name == "CD.LMS" ~ 23,
+            name == "S.Kn" ~ 20,
+            name == "S.Kn.Prior" ~ 20,
+            name == "S.Act" ~ 21,
+            name == "S.EM" ~ 23,
+            name == "S.Cp" ~ 21.6,
+            name == "S.Att" ~ 22,
+            # name == "T.EM" ~ 30,
+            # name == "T.Kn" ~ 31,
+            name == "H.Gen" ~ 19,
+            name == "H.AI.evil" ~ 22.4,
+            name == "H.Cheat" ~ 22.5,
+            name == "H.AI.good" ~ 19.4,
+            name == "H.Tut" ~ 19,
+            name == "LD.Task" ~ 18,
+            name == "LD.Gen" ~ 18,
+            name == "T.Cp" ~ 17,
+            name == "T.Kn" ~ 17.3,
+            name == "T.EM" ~ 18,
             # name == "H.AI.good" ~ 27,
             TRUE ~ x),
         y = case_when(
-            name == "S.Kn" ~ y + 1,
-            # name == "CD.Att" ~ y + 1,
+            name == "Grade" ~ 1,
+            name == "CD.Str" ~ 2,
+            name == "CD.Att" ~ 2.5,
+            name == "CD.LMS" ~ 3,
+            name == "S.Kn" ~ 8,
+            name == "S.Kn.Prior" ~ 12,
+            name == "S.Act" ~ 6,
+            name == "S.EM" ~ 10,
+            name == "S.Cp" ~ 8,
+            name == "S.Att" ~ 12,
             # name == "Grade" ~ y - 2.5,
-            name == "CD.Str" ~ 9,
-            name == "CD.Att" ~ 7,
-            name == "CD.LMS" ~ 4,
-            name == "LD.Task" ~ y +2.5,
-            name == "H.Gen" ~ y + 5,
-            name == "S.Cp" ~ y + 0.5,
-            name == "T.Cp" ~ 4.5,
-            name == "T.Kn" ~ y - 2,
-            name == "H.Tut" ~ y - 1,
-            name == "H.AI.good" ~ y - 0.8,
-            name == "H.AI.evil" ~ y - 2.5,
-            name == "H.Cheat" ~ y,
+            # name == "CD.Att" ~ 7,
+            name == "LD.Task" ~ 6,
+            # name == "CD.LMS" ~ 4,
+            # name == "LD.Task" ~ y +2.5,
+            name == "H.Gen" ~ 4,
+            name == "H.Tut" ~ 6.5,
+            name == "H.AI.good" ~ 5,
+            name == "H.AI.evil" ~ 5,
+            name == "H.Cheat" ~ 7,
+            # name == "S.Cp" ~ y + 0.5,
+            # name == "T.Cp" ~ 4.5,
+            # name == "T.Kn" ~ y - 2,
+            name == "T.EM" ~ 10,
+            name == "T.Cp" ~ 9,
+            name == "T.Kn" ~ 11,
+            # name == "H.Tut" ~ y - 1,
+            # name == "H.AI.good" ~ y - 0.8,
+            # name == "H.AI.evil" ~ y - 2.5,
+            # name == "H.Cheat" ~ y,
             # name == "S.EM" ~ 5,
             TRUE ~ y)
            )
 
 plot_coarse_graph_from_layout <- function(lyt) {
     nodes <- get_nodes()(lyt)
+    
     causal_edges <- filter(get_edges()(lyt), 
                            path_type == "causal") |> 
         select(from, to, edge_w, path_type) |> 
-        mutate(edge_w = 6 * edge_w)
+        mutate(edge_w = 2*edge_w)
+    
     confound_edges <- filter(get_edges()(lyt), 
                              path_type == "confound") |> 
         mutate(edge = if_else(from > to, 
@@ -2010,13 +1793,15 @@ plot_coarse_graph_from_layout <- function(lyt) {
         ggraph(layout = "manual", x = x, y = y) +
         geom_edge_fan(
             aes(alpha = edge_w, filter = path_type == "causal"), 
-            strength = 0.7, linetype = 1,
+            strength = 0.8, linetype = 1,
+            color = "grey20",
             arrow = arrow(length = unit(2.5, 'mm')),
             start_cap = circle(3, 'mm'),
             end_cap = circle(3, 'mm')) +
         geom_edge_arc(
             aes(alpha = edge_w, filter = path_type == "confound"),
             linetype = 2,
+            color = "grey30",
             strength = -0.1,
             start_cap = circle(3, 'mm'),
             end_cap = circle(3, 'mm')) +
@@ -2029,14 +1814,15 @@ plot_coarse_graph_from_layout <- function(lyt) {
             drop = FALSE
         ) +
         theme_graph() +
-        scale_edge_alpha_continuous(range = c(0.1,0.95)) +
+        scale_edge_alpha_continuous(range = c(0.4,0.8)) +
         scale_x_continuous(expand = expansion(mult = 0.1)) +
         # scale_alpha_continuous(range = c(0.2,0.6)) +
         theme(legend.position = "none") 
 }
 
 g_plot_coarse <- function(g, lyt = merged_coarse_layout,
-                          label = FALSE) {
+                          label = FALSE,
+                          label_size = 5) {
     edge_attr <- g |> 
         activate(edges) |> 
         as_tibble() |> 
@@ -2070,8 +1856,12 @@ g_plot_coarse <- function(g, lyt = merged_coarse_layout,
     if (label) {
         p <- p +
             geom_node_text(aes(
-                label = str_wrap(nice_name, width = wrap_width)), 
-                nudge_y = -0.5, alpha = 0.5)
+                colour = node_type,
+                label = str_wrap(
+                    nice_name, width = wrap_width)), 
+                nudge_y = -0.2 * label_size, 
+                alpha = 0.7,
+                size = label_size)
     }
     
     return(p)
@@ -2080,7 +1870,7 @@ g_plot_coarse <- function(g, lyt = merged_coarse_layout,
 pCoarseMerged <- merged_coarse_layout |> 
     plot_coarse_graph_from_layout() +
     geom_node_text(aes(label = name))
-# pCoarseMerged
+pCoarseMerged
 # ggsave("dag_merged_course.svg", pCoarseMerged, , width = 6, height = 6)
 ```
 
@@ -2286,13 +2076,25 @@ p_fine_show_and_save <- function(n){
            width = 8, height = 5, dpi = 600)
     return(p_temp)
 }
-p_coarse_show_and_save <- function(n){
-    p_temp <- plot_highlighted_coarse_graph(n, LEGEND_POSITION = "right") + ggtitle(paste0("CDAG ", n, " highlighted"))
+p_coarse_show_and_save <- function(n, title = T){
+    p_temp <- plot_highlighted_coarse_graph(
+        n, LEGEND_POSITION = "right") 
+    
+    if (title) {
+        p_temp <- p_temp +
+        ggtitle(paste0("CDAG ", n, " highlighted"))
+    }
+    
+    
     ggsave(plot = p_temp, 
            filename = paste0("figures/plt--merged-coarse-with-", n, "-highlighted.png"),
            width = 8, height = 5, dpi = 600)
     return(p_temp)
 }
+```
+
+``` {r}
+p_coarse_show_and_save(2, title = F)
 ```
 
 ## Visualising cluster DAGs
@@ -2807,7 +2609,7 @@ graphs.
 ```{r coarse-graph-edge-coherence}
 # Nodes in cluster graph
 all_nodes_cluster_graphs <- 
-    CDAGs_node_group |> 
+    CDAGs |> 
     imap(
         \(g, m)
         gcm_nodelist(g)
@@ -2815,7 +2617,7 @@ all_nodes_cluster_graphs <-
     list_rbind(names_to = "Model")
 
 all_possible_edges_cluster_graphs <- 
-    CDAGs_node_group |> 
+    CDAGs |> 
     imap(
         \(g, m)
         gcm_possible_edges(g)
@@ -2824,7 +2626,7 @@ all_possible_edges_cluster_graphs <-
     filter(from != to)
 
 all_edges_cluster_graphs <- 
-    CDAGs_node_group |> 
+    CDAGs |> 
     imap(
         \(g, m)
         gcm_edgelist(g)
@@ -2832,7 +2634,7 @@ all_edges_cluster_graphs <-
     list_rbind(names_to = "Model")
 
 all_descendants_cluster_graphs <- 
-    CDAGs_node_group |> 
+    CDAGs |> 
     imap(
         \(g, m)
         gcm_all_descendants_edge_list(g)
@@ -3105,7 +2907,7 @@ scenario.
 
 if (recalculate_distance_matrices) {
     L0_between_model_dist_matrix <- 
-        compute_dist_matrix(CDAGs_node_group, 
+        compute_dist_matrix(CDAGs, 
                             L0_d, 
                             symmetric = TRUE)
     saveRDS(L0_between_model_dist_matrix, 
@@ -3121,7 +2923,7 @@ if (recalculate_distance_matrices) {
 if (recalculate_distance_matrices) {
     L1_between_model_dist_matrix <- 
         compute_dist_matrix(
-            CDAGs_node_group,
+            CDAGs,
             .df = L1_d)
     saveRDS(L1_between_model_dist_matrix, "cache/L1_models_dist_matrix.RDS")
 } else {
@@ -3134,7 +2936,7 @@ if (recalculate_distance_matrices) {
 if (recalculate_distance_matrices) {
     L2_between_model_dist_matrix <- 
         compute_dist_matrix(
-            CDAGs_node_group,
+            CDAGs,
             .df = L2_d
         )
     
@@ -3216,7 +3018,27 @@ L012_hclust_models |>
                   # "#56B4E9", 
                   "#D55E00", "#CC79A7"),
         k = 4) |> 
-    plot(axes = T, horiz = F) 
+    plot(axes = F, horiz = F) 
+
+dev.off()
+par(mar = c(3, 3, 0.5, 0.5),   # default c(5.1, 4.1, 4.1, 2.1)
+    xaxs = "i", yaxs = "i")    # drop the 4% range padding
+png("figures/FIG--CDAG-dendrogram--3.png", 
+    width = 10, height = 3, units = "in", res = 300)
+L012_hclust_models |> 
+    as.dendrogram() |> 
+    set("labels_col", 
+        value = c("#008595",
+                  "#D55E00", 
+                  "#CC79A7"),
+        k = 3) |> 
+    set("branches_k_color", 
+        value = c("#008595",
+                  "#D55E00",
+                  "#CC79A7"),
+        k = 3) |> 
+    hang.dendrogram(hang = 0.1) |> 
+    plot(axes = F, horiz = F) 
 
 dev.off()
 
@@ -3224,18 +3046,17 @@ dev.off()
 L012_hclust_models |> 
     as.dendrogram() |> 
     set("labels_col", 
-        value = c("#009E73", 
-                  "#0072B2",
-                  # "#56B4E9", 
-                  "#D55E00", "#CC79A7"),
-        k = 4) |> 
+        value = c("#008595",
+                  "#D55E00", 
+                  "#CC79A7"),
+        k = 3) |> 
     set("branches_k_color", 
-        value = c("#009E73", 
-                  "#0072B2",
-                  # "#56B4E9", 
-                  "#D55E00", "#CC79A7"),
-        k = 4) |> 
-    plot(axes = T, horiz = F) 
+        value = c("#008595",
+                  "#D55E00",
+                  "#CC79A7"),
+        k = 3) |> 
+    hang.dendrogram(hang = 0.1) |> 
+    plot(axes = F, horiz = F) 
 
 ```
 
@@ -3246,7 +3067,7 @@ ng_counts <-
     all_node_groups_aggregated_metrics |> 
     count(node_group)
 
-gcm_latent_projection_merge <- function(model_list, shared_nodes = NULL,
+gcm_projection_merge <- function(model_list, shared_nodes = NULL,
                                         additional_nodes = NULL) {
     # merges the latent projection of a list of models
     # each model is projected onto the shared set of nodes, 
@@ -3260,27 +3081,32 @@ gcm_latent_projection_merge <- function(model_list, shared_nodes = NULL,
                     pull(name) 
             ) |> 
             reduce(intersect)
-        if (!is.null(additional_nodes)) {
-            shared_nodes <- union(shared_nodes, additional_nodes)
-        }
+    }
+    if (!is.null(additional_nodes)) {
+        shared_nodes <- union(shared_nodes, additional_nodes)
     }
     
     merged_projections <- 
         model_list |> 
         map(
             \(m)
-            gcm_latent_projection(m, latent_nodes = 
-                                      setdiff(gcm_nodelist(m) |> pull(name),
-                                              shared_nodes)) |> 
-                activate(edges) |> 
-                mutate(edge_w = replace_na(edge_w, 1)) |> 
-                activate(nodes)
+            gcm_projection(
+                m, 
+                latent_nodes = 
+                    setdiff(gcm_nodelist(m, as_tibble = FALSE),
+                            shared_nodes)) |> 
+                activate(edges) 
+            # |> 
+            #     mutate(edge_w = replace_na(edge_w, 1)) |> 
+            #     activate(nodes)
         ) |> 
         reduce(gcm_merge) |> 
+        gcm_split_types() |> 
         activate(edges) |> 
         mutate(path_type = case_when(
-            str_detect(path_type, "confound") ~ "confound",
-            TRUE ~ "causal"
+            str_detect(type, "<->") ~ "confound",
+            type =="->" ~ "causal",
+            type =="<-" ~ "causal"
         ))
     
     return(merged_projections)
@@ -3296,14 +3122,15 @@ plot_latent_clusters_merged <- function(indexes,
                                         additional_nodes = NULL,
                                         ...) {
     CDAG.projection <- 
-        CDAGs_node_group[indexes] |> 
-        gcm_latent_projection_merge(shared_nodes = nl,
-                                    additional_nodes = additional_nodes) 
+        CDAGs[indexes] |> 
+        gcm_projection_merge(
+            shared_nodes = nl,
+            additional_nodes = additional_nodes) 
     
     CDAG.projection |> 
         g_plot_coarse(...) +
         ggtitle(str_c(
-            "Merged latent projections of: ",  
+            "Merged latent projection of: ",  
             str_c("M", indexes, collapse = ", "))) 
 }
 
@@ -3346,6 +3173,12 @@ grouped_cdags <- list(
         description = "Student actions leacing traces in LMS, lower metacognitive skill  drives Misuse of AI.",
         colour = "#0072B2"
     ),
+    C2a = list(
+        name = "actions-leave-traces--metacog-skill-defends-AI-misuse",
+        models = c(2, 4),
+        description = "Student actions leacing traces in LMS, lower metacognitive skill  drives Misuse of AI.",
+        colour = "#5572B2"
+    ),
     C3 = list(
         name = "course-design-and-teacher-capabilities",
         models = c(1),
@@ -3384,8 +3217,8 @@ grouped_cdags |>
 ```
 
 ``` {r}
-save_latent_merged_cdag_rect_plot <- function(l) {
-    p <- plot_latent_clusters_merged(l$models) + 
+save_latent_merged_cdag_rect_plot <- function(l, ...) {
+    p <- plot_latent_clusters_merged(l$models, ...) + 
         ggtitle("") +
         coord_equal()+
         theme(
@@ -3399,9 +3232,63 @@ save_latent_merged_cdag_rect_plot <- function(l) {
     
 }
 
+
 grouped_cdags |> 
     map(save_latent_merged_cdag_rect_plot)
 ```
+
+``` {r}
+pg1 <- plot_latent_clusters_merged(
+    grouped_cdags$C1plus2$models, label = T) +
+    scale_y_continuous(limits = c(-1, 10))+
+    # scale_y_continuous(limits = c(-0.5, 10))+
+    theme(
+        panel.border = element_rect(
+            colour = grouped_cdags$C1plus2$colour, 
+            fill = NA, 
+            linewidth = 2)) +
+    ggtitle("")
+pg1
+
+ggsave(
+    str_c("figures/projCDAG-labelled-", grouped_cdags$C1plus2$name,".png"), 
+        plot = pg1,
+        width = 6, height = 4,
+        units = "in")
+```
+
+
+``` {r}
+pg2 <- plot_latent_clusters_merged(
+    grouped_cdags$C4$models, label = T) +
+    scale_y_continuous(limits = c(-1, 10)) +
+    theme(
+        panel.border = element_rect(
+            colour = grouped_cdags$C4$colour, 
+            fill = NA, 
+            linewidth = 2)) +
+    ggtitle("")
+
+pg2
+
+ggsave(
+    str_c("figures/projCDAG-labelled-", grouped_cdags$C4$name,".png"), 
+        plot = pg2,
+        width = 6, height = 4,
+        units = "in")
+```
+
+
+``` {r}
+plot_latent_clusters_merged(
+    grouped_cdags$C3$models, label = T) +
+    scale_y_continuous(limits = c(-0.5, 12)) +
+    theme(
+            panel.border = element_rect(
+                colour = grouped_cdags$C3$colour, fill = NA, linewidth = 2))
+```
+
+
 
 
 # Simulation
@@ -3477,6 +3364,8 @@ of application to discover latent nodes are to be believed (CITE) then
 we should see some reasonable convergence towards each locally true
 model.
 
+
+
 ```{r simulate-data-from-dags}
 # maybe use dagitty::simulateSEM() or dagitty::simulateLogistic()
 # dagitty suggests using lavaan instead for SEM
@@ -3484,123 +3373,63 @@ model.
 # should add layout!!
 # use same x, y from main graph
 
-m_build_node_group_model_with_proxy_nodes <- function(
-        m = "M1", 
-        x_p_nudge = 0, y_p_nudge = -2) {
-    model <- m
-
-    nodes_in_graphs <- 
-        all_node_groups_aggregated_metrics |>
-        mutate(measurability = case_when(
-            # Simplifying for sim
-            node_group == "S.Kn" ~ "O", # For simming only
-            str_detect(measurability_node_group, "atent") ~ "L",
-            str_detect(measurability_node_group, "Potent") ~ "PO",
-            TRUE ~ "O",
-        )) |> 
-        mutate(name = node_group) |> 
-        inner_join(merged_coarse_layout |> 
-                       select(name, x, y),
-                   by = "name") |> 
-        filter(Model == toupper(m)) |> 
-        select(name, x, y, node_group, node_type, 
-               measurability)
-    
-    proxy_nodes <- 
-        nodes_in_graphs|> 
-                filter(measurability == "PO") |> 
-                select(name, node_type, x, y) |> 
-                mutate(name = str_c(name, "_p"),
-                       # Need to place proxy nodes close - might cause issues
-                       x = x + x_p_nudge,
-                       y = y + y_p_nudge  
-                       ) |> 
-                mutate(node_group = "Proxy") |> 
-                mutate(measurability = "O") # the assumption for the proxy
-    
-    nodes <- nodes_in_graphs |> 
-        bind_rows( # adding proxy nodes for PO nodes
-            proxy_nodes
-        ) |> 
-        mutate(measurability = factor(
-            measurability, 
-            levels = c("L", "PO", "O")))
-    
-    edges <- CDAGs_node_group[[m]] |>
-        gcm_edgelist() |> 
-        bind_rows(
-            tibble(
-                from = nodes |> 
-                    filter(measurability == "PO") |> 
-                    pull(name)) |> 
-                mutate(to = str_c(from, "_p"))
-        )
-    
-    new_tidydag <- tidygraph::tbl_graph(
-        nodes = nodes, edges = edges, directed = TRUE
-    )
-    new_dag <- dagitty_from_edge_df(edges)
-    
-    # setting coordinates of dagitty object - needs to be a named list
-    node_names <- nodes$name
-    node_coord_list <- list(x = nodes$x, y = nodes$y)
-    names(node_coord_list$x) <- node_names
-    names(node_coord_list$y) <- node_names
-    coordinates(new_dag) <- node_coord_list
-    
-    node_list_o <- 
-        nodes |> 
-        filter(measurability == "O") |> 
-        filter(!str_detect(name, "_p")) |> 
-        pull(name)
-    node_list_opo <- nodes |>  
-        filter(measurability %in% c("DW", "O")) |> 
-        pull(name)
-    
-    return(list(
-        dag = new_dag, # new dag in dagitty format
-        tdag = new_tidydag, # new dag as tidydag
-        node_list_o = node_list_o, # list of observable nodes (excluding proxies)
-        node_list_opo = node_list_opo # list of all non-latent nodes
-        ))
-}
-
-
 
 simSEM <- partial(simulateSEM, eps = 1, standardized = F, N = 1000)
 # simSEM <- partial(simulateLogistic, eps = 1, N = 1000)
 
-
-bn_fit_node_group_model_list <- function(
-        m_proxy_list, Beta = 0.4,
+bn_fit_simulations <- function(
+        dag, observable_nodes,
+        force_observable = c("Grade", "S.Kn"),
+        Beta = 0.4,
+        proxy_nodes = NULL, # not implemented. Add to observable but also add noise
+        proxy_noise_sd = NULL, # will use Beta if not specified
         blacklist = tibble(
             from = "Grade", 
             to = "S.Kn")) {
     
+    observable_nodes <- union(observable_nodes, force_observable)
     # getting simulated data, and subsets
-    d.sim.sem <- simSEM(m_proxy_list$dag, b.default = Beta)
-    d.o <- as.data.frame(d.sim.sem[,m_proxy_list$node_list_o])
-    d.opo <- as.data.frame(d.sim.sem[,m_proxy_list$node_list_opo])
+    d.sim.sem <- simSEM(dag, b.default = Beta)
+    d.o <- as.data.frame(d.sim.sem |> select(all_of(observable_nodes)))
+    if (!is.null(proxy_nodes)) {
+        proxy_nodes <- setdiff(proxy_nodes, force_observable)
+        # adding in proxy nodes, with additional noise due to using proxy measurement
+        if (is.null(proxy_noise_sd)) proxy_noise_sd <- Beta
+        d.proxy <- as.data.frame(d.sim.sem |> select(all_of(proxy_nodes)))
+        d.proxy <- lapply(d.proxy, \(x) x + rnorm(length(x), 0, proxy_noise_sd))
+    }
     
     # fitting BNets
-    bn.full =  bnlearn::bn.fit(bnlearn::hc(d.sim.sem,
-                                           blacklist = blacklist), d.sim.sem)
-    bn.o =    bnlearn::bn.fit(bnlearn::hc(d.o,
-                                           blacklist = blacklist), d.o)
-    bn.opo = bnlearn::bn.fit(bnlearn::hc(d.opo,
-                                           blacklist = blacklist), d.opo)
+    bn.o =    bnlearn::bn.fit(
+        bnlearn::hc(
+            d.o,
+            blacklist = blacklist), d.o)
+    bn.DAG.o <- bn_to_dagitty(bn.o)
+    
+    if (!is.null(proxy_nodes)) {
+        d.opo <- bind_cols(d.o, d.proxy)
+        bn.opo = bnlearn::bn.fit(
+            bnlearn::hc(
+                d.opo,
+                blacklist = blacklist), d.opo)
+        bn.DAG.opo <- bn_to_dagitty(bn = bn.opo)
+    } else {
+        d.opo <- NULL
+        bn.opo <-  NULL
+        bn.DAG.opo <-  NULL
+    }
     
     return( # returns a named list of simmed data and models
         list(
-            # The full data set
-            d.full   = d.sim.sem,
-            bn.full  = bn.full,
+            simdata = d.sim.sem,
             # Only observable nodes
-            d.o     = d.o,
+            simdata.o     = d.o,
             bn.o    = bn.o,
+            bn.DAG.o = bn.DAG.o,
             # Including Potentially Observable (PO), so ALL non-latent nodes
-            d.opo  = d.opo,
-            bn.opo = bn.opo
+            simdata.opo  = d.opo,
+            bn.opo = bn.opo,
+            bn.DAG.opo = bn.DAG.opo
     ))
 }
 
@@ -3645,8 +3474,17 @@ causal_estimate_over_all_adj_sets <- function(
         x1_val = 1, x0_val = 0) {
     # This estimates P(Grade|S.Kn, Adjustment Set) over all adjustment sets
     # This will give a range of that the model suggests is the true effect
-    adj_sets <- adjustmentSets(dag, exposure = exposure, outcome = outcome,
-                               type = "all")
+    if (is.null(dag)) {
+        list(adjustment_set = NULL,
+                estimate = NULL,
+                std_error = NULL)
+    }
+    
+    adj_sets <- adjustmentSets(
+        dag, 
+        exposure = exposure, outcome = outcome,
+        type = "all")
+    
     if (!is.null(latent_nodes)) {
         # remove any with latent nodes 
         adj_sets <- keep(adj_sets, \(x) !any(x %in% latent_nodes))
@@ -3654,7 +3492,7 @@ causal_estimate_over_all_adj_sets <- function(
     # Throw error if none!
     estimate_per_set <- map(adj_sets, function(adj_set) {
         if (length(adj_set) == 0) {
-            message("No adjustment sets found")
+            message("No adjustment needed - regress directly")
             formula_str <- str_c(outcome, " ~ ", exposure)
         } else {
             formula_str <- str_c(outcome, " ~ ", exposure, " + ",
@@ -3686,14 +3524,18 @@ causal_estimate_over_all_adj_sets <- function(
         se0 <- sqrt(mean(y1_x0$se.fit^2))
         se <- max(se1, se0)
         
+        # X1 <- model.matrix(delete.response(terms(fit)), x1_data)
+        # X0 <- model.matrix(delete.response(terms(fit)), x0_data)
+        # d  <- colMeans(X1 - X0)
+        # est <- drop(d %*% coef(fit))
+        # se  <- sqrt(drop(t(d) %*% vcov(fit) %*% d))
+        
     list(
         y1_x0 = y1_x0,
         y1_x1 = y1_x1,
         mean = mean(preds.fit),
-        se   = se
-    )
-    }
-    )
+        se   = se)})
+    
     estimates <- map_dbl(estimate_per_set, "mean")
     std_errors <- map_dbl(estimate_per_set, "se")
     return(list(adjustment_set = adj_sets,
@@ -3701,114 +3543,212 @@ causal_estimate_over_all_adj_sets <- function(
                 std_error = std_errors))
 }
 
+
+#' Estimate a causal contrast under every valid adjustment set
+#'
+#' Returns, as before:
+#'   $adjustment_set  list of adjustment sets (dagitty), after filtering
+#'   $estimate        numeric vector, one per set, same order
+#'   $std_error       numeric vector, one per set, same order
+#'
+#' All valid adjustment sets identify the same estimand, so under a CORRECT
+#' graph the spread across sets is noise. Under a deliberately misspecified
+#' graph it is a measure of structural disagreement - but a lower bound on
+#' error, not error itself: sets can agree closely and all be biased the same
+#' way. Compare against the known truth as well as across sets.
+
+causal_estimate_over_all_adj_sets <- function(
+    dag, data,
+    latent_nodes = NULL,
+    exposure     = "S.Kn",
+    outcome      = "Grade",
+    x1_val       = 1,
+    x0_val       = 0,
+    type         = "all",
+    max_sets     = Inf) {
+
+  null_out <- list(adjustment_set = NULL, estimate = NULL, std_error = NULL)
+
+  if (is.null(dag)) return(null_out)          # was missing its return()
+
+  stopifnot(exposure %in% names(data), outcome %in% names(data))
+
+  adj_sets <- dagitty::adjustmentSets(
+    dag, exposure = exposure, outcome = outcome,
+    type = type, max.results = max_sets
+  )
+
+  if (!is.null(latent_nodes))
+    adj_sets <- purrr::keep(adj_sets, \(s) !any(s %in% latent_nodes))
+
+  ## covariates must actually be measured, else lm() errors
+  adj_sets <- purrr::keep(adj_sets, \(s) all(s %in% names(data)))
+
+  if (length(adj_sets) == 0) {
+    warning("no usable adjustment set for ", exposure, " -> ", outcome)
+    return(list(adjustment_set = adj_sets,
+                estimate = numeric(0), std_error = numeric(0)))
+  }
+
+  y        <- data[[outcome]]                 # was data[[1]]
+  is_binom <- is.factor(y) || is.logical(y) ||
+              (is.numeric(y) && all(y %in% c(0, 1), na.rm = TRUE))
+  ex_lev   <- if (is.factor(data[[exposure]])) levels(data[[exposure]]) else NULL
+
+  ## levels taken from the data, so x0_val = 0 can't become NA
+  set_exposure <- function(d, v) {
+    d[[exposure]] <- if (is.null(ex_lev)) v else factor(v, levels = ex_lev)
+    d
+  }
+
+  estimate_per_set <- purrr::map(adj_sets, function(adj_set) {
+
+    rhs <- if (length(adj_set) == 0) exposure
+           else paste(c(exposure, adj_set), collapse = " + ")
+    fit <- if (is_binom)
+             stats::glm(stats::as.formula(paste(outcome, "~", rhs)),
+                        data = data, family = stats::binomial)
+           else
+             stats::lm(stats::as.formula(paste(outcome, "~", rhs)), data = data)
+
+    tt <- stats::delete.response(stats::terms(fit))
+    X1 <- stats::model.matrix(tt, set_exposure(data, x1_val), xlev = fit$xlevels)
+    X0 <- stats::model.matrix(tt, set_exposure(data, x0_val), xlev = fit$xlevels)
+
+    b <- stats::coef(fit)
+    V <- stats::vcov(fit)
+
+    if (is_binom) {
+      ## response scale (risk difference), delta-method SE
+      p1   <- stats::plogis(drop(X1 %*% b))
+      p0   <- stats::plogis(drop(X0 %*% b))
+      est  <- mean(p1 - p0)
+      grad <- colMeans(X1 * (p1 * (1 - p1)) - X0 * (p0 * (1 - p0)))
+    } else {
+      grad <- colMeans(X1 - X0)
+      est  <- drop(grad %*% b)
+    }
+
+    ## SE of the contrast: both arms come from one fit, so the covariance
+    ## between them must be kept, not dropped as in max(se1, se0)
+    list(mean = est,
+         se   = sqrt(drop(t(grad) %*% V %*% grad)))
+  })
+
+  list(adjustment_set = adj_sets,
+       estimate       = purrr::map_dbl(estimate_per_set, "mean"),
+       std_error      = purrr::map_dbl(estimate_per_set, "se"))
+}
+
+
+
 generate_node_group_causal_estimate_comparisons <- function(
-        Model = "M1",
+        Model = "M5",
         Beta = 0.4, # strength of signal along paths
         # might need to change for different models depending on present nodes
         exposure = "S.Kn", outcome = "Grade",
+        use_potential_observable_proxies = TRUE,
         x1_val = 1, x0_val = 0, # should be 1 and 0 for continuous
         # for placiing proxy nodes
         x_p_nudge = 0, y_p_nudge = -2
 ) {
     ground_truth_dag <- 
-        CDAGs_node_group[[Model]] |> 
-        tidy_graph_to_dag()
+        CDAGs[[Model]] |> 
+        tidygraph_to_dagitty()
+    obs_nds = CDAGs[[Model]]$observable 
+    proxy_nds = CDAGs[[Model]] |> 
+        activate(nodes) |> 
+        as_tibble() |> 
+        filter(measurability_node_group == "Potentially observable") |> 
+        pull(name)
     
-    model_list <- 
-        m_build_node_group_model_with_proxy_nodes(
-        m = Model, 
-        x_p_nudge = x_p_nudge, 
-        y_p_nudge = y_p_nudge)
-    
-    bn_list <- bn_fit_node_group_model_list(model_list, Beta = Beta)
     # Ground truth uses full simmed data
     est <- partial(causal_estimate_over_all_adj_sets,
                    exposure = exposure, outcome = outcome,
                    x1_val = x1_val, x0_val = x0_val)
     
-    ground_truth <- est(dag = ground_truth_dag, data = bn_list$d.full)
+    if (use_potential_observable_proxies) {
+        bn_list <- bn_fit_simulations(
+            dag = ground_truth_dag, 
+            observable_nodes = obs_nds,
+            proxy_nodes = proxy_nds,
+            Beta = Beta)
+        obs_data <- bn_list$simdata.opo
+        learned_dag <- bn_list$bn.DAG.opo
+    } else {
+        bn_list <- bn_fit_simulations(
+            dag = ground_truth_dag, 
+            observable_nodes = obs_nds,
+            Beta = Beta)
+        obs_data <- bn_list$simdata.o
+        learned_dag <- bn_list$bn.DAG.o
+    }
+
+    ground_truth <- est(
+        dag = ground_truth_dag, 
+        data = bn_list$simdata)
+    
     expert_dag <- est(
         dag = ground_truth_dag, 
-        data = bn_list$d.full,
-        latent_nodes = 
-            all_node_groups_aggregated_metrics |> 
-            filter(Model == Model, 
-                   str_detect(measurability_node_group, "atent")) |> 
-            pull(node_group))
-    can_estimate_o <- 
-        (exposure %in% model_list$node_list_o) & (outcome %in% model_list$node_list_o)
-    can_estimate_opo <- 
-        (exposure %in% model_list$node_list_opo) & (outcome %in% model_list$node_list_opo)
+        data = obs_data,
+        latent_nodes = setdiff(
+            names(ground_truth_dag),
+            names(obs_data)))
+    
+    learned_dag <- est(
+        dag = learned_dag, 
+        data = obs_data,
+        latent_nodes = setdiff(
+            names(learned_dag),
+            names(obs_data)))
 
-    if (can_estimate_o) {
-        est.o <- est(   
-            dag = bn_to_dagitty(bn_list$bn.o) , 
-            data = bn_list$d.o)
-    } else {
-        est.o <- list("adjustment_set" = NA, "estimate" = NA)
-        message("Nodes not found in Observable node list")
-    }
-    
-    if (can_estimate_opo) {
-        est.opo <- est(  
-            dag = bn_to_dagitty(bn_list$bn.opo) , 
-            data = bn_list$d.opo)
-    } else {
-        est.opo <- list("adjustment_set" = NA, "estimate" = NA)
-        message("Nodes not found in Potentially Observable node list")
-    }
-    
     estimates <- tibble(
         Model = Model,
         DAG = c(
             "Ground Truth", 
             "Expert DAG",
-            "Observable", 
-            "Potentially Observable") |> 
+            "Learned DAG") |> 
             factor(levels = c(
                 "Ground Truth", 
                 "Expert DAG", 
-                "Observable", 
-                "Potentially Observable")),
+                "Learned DAG")),
         exposure = exposure, 
         outcome = outcome,
         adjustment_sets = list(
             ground_truth$adjustment_set,
             expert_dag$adjustment_set,
-            est.o$adjustment_set,
-            est.opo$adjustment_set
+            learned_dag$adjustment_set
         ),
         estimate_mean = c(
             mean(ground_truth$estimate),
             mean(expert_dag$estimate),
-            mean(est.o$estimate),
-            mean(est.opo$estimate)
+            mean(learned_dag$estimate)
         ),
         estimate_std_errors = c(
             mean(ground_truth$std_error),
             mean(expert_dag$std_error),
-            mean(est.o$std_error),
-            mean(est.opo$std_error)
+            mean(learned_dag$std_error)
         ),
         estimate_sd = c(
             sd(ground_truth$estimate),
             sd(expert_dag$estimate),
-            sd(est.o$estimate),
-            sd(est.opo$estimate)
+            sd(learned_dag$estimate)
         )
     )
+    message(str_c("Simulation complete for ", Model))
     
     return( # Monster list of everything we need
         list(
             Model = Model,
             DAG = ground_truth_dag,
-            augmented_DAGs = model_list,
             fitted_BN = bn_list,
             estimates = estimates
         )
     )
 }
 ```
+
+### Model simulations with `dagitty` and `bnlearn`
 
 ```{r simulating-cluster-models}
 if (rerun_simulations) {
@@ -3829,7 +3769,7 @@ if (rerun_simulations) {
 
 ```
 
-```{r}
+```{r all-CDAG-estimates}
 all_ng_estimates <-
     map(
         simulations_ng_cluster_models,
@@ -3844,6 +3784,348 @@ all_ng_estimates <-
     mutate(error = estimate_std_errors + replace_na(estimate_sd, 0)) |> 
     select(Model, DAG, estimate_mean, error, gt_est_diff, everything())
 ```
+
+
+
+
+
+
+
+
+
+### Structure learning using ICD
+
+
+ICD (Iterative Causal Discovery) learns a Partial Ancestry Graph (PAG), an equivalence class of Maximal Ancestry Graphs (MAGs),
+allowing for latent confounders and selection bias. This code is taken from https://github.com/IntelLabs/causality-lab/blob/main/notebooks/causal_discovery_with_latent_confounders.ipynb, with some AI translation into here. 
+It is implemented only in Intel Labs' `causality-lab` (Python), so this document runs it through `reticulate` and brings the learned graph back into R as an adjacency matrix.
+
+#### One-time environment setup
+
+Run this once in the console, not on every render.
+
+```{r}
+#| label: install
+#| eval: false
+
+library(reticulate)
+virtualenv_create("icd", packages = c("numpy", "scipy"))
+virtualenv_install("icd", "git+https://github.com/IntelLabs/causality-lab.git")
+```
+
+`causality-lab` is not on PyPI, so it installs from the repo. If `git+https`
+is blocked, download the zip and point pip at the unpacked folder instead:
+
+```{r}
+#| label: install-fallback
+#| eval: false
+virtualenv_install("icd", "C:/path/to/causality-lab-main")
+```
+
+#### Setup
+
+```{r}
+#| label: setup
+library(reticulate)
+use_virtualenv("icd", required = TRUE)
+```
+
+```{python}
+#| label: py-imports
+import numpy as np
+from causal_discovery_algs import LearnStructICD, LearnStructFCI
+from causal_discovery_utils.cond_indep_tests import CondIndepParCorr
+```
+
+
+#### Data - batched
+
+`sim_list` is a **named** list of numeric matrices, names `M1`–`M8`. Rows are
+records, columns are variables. Models may have different numbers of columns —
+the node set is derived per matrix, so a shared vocabulary isn't required.
+
+```{r}
+#| label: data
+
+sim_list <- simulations_ng_cluster_models |> 
+    map(
+        \(sim)
+        sim$fitted_BN$simdata.opo
+    )
+
+stopifnot(is.list(sim_list), !is.null(names(sim_list)))
+
+sim_list <- lapply(sim_list, function(m) {
+  m <- as.matrix(m)
+  storage.mode(m) <- "double"
+  m
+})
+
+# keep column names on the R side; Python works in 0-based indices only
+var_names <- lapply(sim_list, function(m) {
+  nm <- colnames(m)
+  if (is.null(nm)) paste0("V", seq_len(ncol(m))) else nm
+})
+
+alpha <- 0.01
+
+data.frame(
+  model   = names(sim_list),
+  records = vapply(sim_list, nrow, integer(1)),
+  nodes   = vapply(sim_list, ncol, integer(1))
+)
+```
+
+
+## Learn
+
+The loop runs inside Python so each matrix crosses the boundary once. A failure
+on one model is caught and recorded rather than aborting the render.
+
+```{python}
+#| label: py-helpers
+import numpy as np
+from causal_discovery_algs import LearnStructICD, LearnStructFCI
+from causal_discovery_utils.cond_indep_tests import CondIndepParCorr
+
+
+def learn_one(mat, alpha=0.01, run_fci=True):
+    dataset = np.asarray(mat, dtype=float)
+    if dataset.ndim != 2 or dataset.shape[1] < 3:
+        raise ValueError(f"need a 2-D matrix with >=3 columns, got {dataset.shape}")
+
+    obs = set(range(dataset.shape[1]))          # 0-based, matches column order
+
+    ci = CondIndepParCorr(dataset=dataset, threshold=alpha,
+                          count_tests=True, use_cache=True)
+    icd = LearnStructICD(obs, ci)
+    icd.learn_structure()
+
+    out = {"adj_icd": icd.graph.get_adj_mat(),
+           "tests_icd": ci.test_counter,
+           "error": None}
+
+    if run_fci:
+        ci2 = CondIndepParCorr(dataset=dataset, threshold=alpha,
+                               count_tests=True, use_cache=True)
+        fci = LearnStructFCI(obs, ci2)
+        fci.learn_structure()
+        out["adj_fci"] = fci.graph.get_adj_mat()
+        out["tests_fci"] = ci2.test_counter
+
+    return out
+
+
+def learn_many(mats, alpha=0.01, run_fci=True):
+    res = {}
+    for name, mat in mats.items():
+        try:
+            res[name] = learn_one(mat, alpha, run_fci)
+        except Exception as e:
+            res[name] = {"adj_icd": None, "tests_icd": None,
+                         "error": f"{type(e).__name__}: {e}"}
+    return res
+
+```
+
+```{python}
+#| label: py-run
+results = learn_many(r.sim_list, alpha=r.alpha, run_fci=True)
+```
+
+## Back into R
+
+```{r}
+#| label: pull-back
+res <- py$results
+res <- res[names(sim_list)]   # dicts don't guarantee order; restore M1..M8
+
+failed <- vapply(res, function(x) !is.null(x$error), logical(1))
+if (any(failed)) {
+  message("failed: ", paste(names(res)[failed], collapse = ", "))
+  print(vapply(res[failed], function(x) x$error, character(1)))
+}
+
+adj_icd <- Map(function(x, nm) {
+  if (is.null(x$adj_icd)) return(NULL)
+  a <- x$adj_icd
+  dimnames(a) <- list(nm, nm)
+  a
+}, res, var_names)
+
+adj_fci <- Map(function(x, nm) {
+  if (is.null(x$adj_fci)) return(NULL)
+  a <- x$adj_fci
+  dimnames(a) <- list(nm, nm)
+  a
+}, res, var_names)
+```
+
+```{r}
+#| label: edge-list
+pag_edges <- function(adj, nodes = colnames(adj)) {
+  left  <- c("1" = "o", "2" = "<", "3" = "-")   # mark at the a-end, mirrored
+  right <- c("1" = "o", "2" = ">", "3" = "-")   # mark at the b-end
+  p <- nrow(adj)
+  out <- list()
+
+  for (a in seq_len(p - 1)) {
+    for (b in (a + 1):p) {
+      if (adj[a, b] == 0 && adj[b, a] == 0) next
+      out[[length(out) + 1]] <- data.frame(
+        from      = nodes[a],
+        to        = nodes[b],
+        mark_from = left[[as.character(adj[b, a])]],
+        mark_to   = right[[as.character(adj[a, b])]],
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+
+  if (length(out) == 0) {
+    return(data.frame(from = character(), to = character(),
+                      mark_from = character(), mark_to = character(),
+                      edge = character()))
+  }
+
+  res <- do.call(rbind, out)
+  res$edge <- paste0(res$mark_from, "-", res$mark_to)
+  res
+}
+
+edges_icd <- lapply(adj_icd[!vapply(adj_icd, is.null, logical(1))], pag_edges)
+
+# one long frame across models, if that suits the downstream comparison better
+edges_all <- do.call(rbind, Map(function(e, nm) {
+  if (nrow(e) == 0) return(NULL)
+  cbind(model = nm, e)
+}, edges_icd, names(edges_icd)))
+rownames(edges_all) <- NULL
+
+head(edges_all, 20)
+```
+
+## Summary across models
+
+```{r}
+#| label: summary
+edge_summary <- function(e) {
+  types <- c("o-o", "o->", "<-o", "-->", "<--", "<->", "---")
+  counts <- table(factor(e$edge, levels = types))
+  c(n_edges = nrow(e), counts)
+}
+
+summ <- t(vapply(edges_icd, edge_summary, numeric(8)))
+summ <- as.data.frame(summ)
+summ$total_tests <- vapply(res[rownames(summ)],
+                           function(x) sum(unlist(x$tests_icd)), numeric(1))
+summ
+```
+
+Note `<-o` and `<--` are the same edge types as `o->` and `-->` with the
+endpoints swapped; they appear separately here only because `pag_edges()` fixes
+the column order by node index rather than by orientation.
+
+## CI tests per conditioning set size
+
+`test_counter` runs to the largest conditioning set reached, which differs by
+model, so pad before binding.
+
+```{r}
+#| label: test-counts
+pad <- function(x, n) c(x, rep(0, n - length(x)))
+
+tests_icd <- lapply(res, function(x) unlist(x$tests_icd))
+tests_icd <- tests_icd[!vapply(tests_icd, is.null, logical(1))]
+maxlen <- max(vapply(tests_icd, length, integer(1)))
+
+tests_mat <- t(vapply(tests_icd, pad, numeric(maxlen), n = maxlen))
+colnames(tests_mat) <- seq_len(maxlen) - 1L
+tests_mat
+
+matplot(seq_len(maxlen) - 1L, t(tests_mat), type = "b", pch = 1, lty = 1,
+        xlab = "conditioning set size", ylab = "number of CI tests")
+legend("topright", rownames(tests_mat), col = seq_len(nrow(tests_mat)),
+       lty = 1, bty = "n", cex = 0.8)
+```
+
+``` {r}
+pag_to_dagitty <- function(e) {
+  f <- function(a, b, mf, mt) {
+    switch(paste0(mf, mt),
+      "oo" = sprintf("%s @-@ %s", a, b),
+      "o>" = sprintf("%s @-> %s", a, b),
+      "->" = sprintf("%s -> %s",  a, b),
+      "<o" = sprintf("%s @-> %s", b, a),   # flip so the circle leads
+      "<-" = sprintf("%s -> %s",  b, a),
+      "<>" = sprintf("%s <-> %s", a, b),
+      "o-" = sprintf("%s @-- %s", a, b),
+      "-o" = sprintf("%s @-- %s", b, a),
+      "--" = sprintf("%s -- %s",  a, b),
+      stop("unhandled edge: ", mf, mt)
+    )
+  }
+  stmts <- mapply(f, e$from, e$to, e$mark_from, e$mark_to, USE.NAMES = FALSE)
+  paste0("pag { ", paste(stmts, collapse = "; "), " }") |> 
+      dagitty()
+}
+
+icd_PAGs <- 
+    edges_icd |> 
+    map(pag_to_dagitty)
+
+```
+
+Using the ICD PAGs to run simulations
+
+``` {r}
+sim_from_pag <- function(Model = "M6") {
+    causal_estimate_over_all_adj_sets(
+        dag = icd_PAGs[[Model]], 
+        data = simulations_ng_cluster_models[[Model]]$fitted_BN$simdata.opo
+        ) 
+}
+
+simulations_ng_PAGs <- 
+    str_c("M",1:8) |> 
+    set_names() |> 
+    map(sim_from_pag)
+
+PAG_ng_estimates <-
+    map(
+        simulations_ng_PAGs,
+        \(s)
+           tibble(
+               DAG = "Learned PAG",
+               exposure = "S.Kn",
+               outcome = "Grade",
+               adjustment_sets = list(s$adjustment_set),
+               estimate_mean = mean(s$estimate),
+               error = mean(s$std_error)
+           )
+        ) |> 
+    list_rbind(names_to = "Model") 
+
+
+all_simulation_estimates <- 
+    bind_rows(all_ng_estimates, PAG_ng_estimates) 
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ## Simulation comparisons
 
@@ -3867,18 +4149,10 @@ ground_truth_error_estimate <-
     filter(!is.nan(error)) |> 
     pull(error) |> 
     max())
-    # ) + ( # as well as the difference in ground truth estimates
-    #     all_ng_estimates |> 
-    # filter(DAG == "Ground Truth") |> 
-    # filter(!is.nan(estimate_mean)) |> 
-    # pull(estimate_mean) |> 
-    # range() |> 
-    #     diff()
-    # )
 
 
 est_to_plot <- 
-    all_ng_estimates |>
+    all_simulation_estimates |>
     mutate(estimated_ground_truth = is.nan(estimate_mean)) |> 
     mutate(
         estimate_mean = if_else(is.nan(estimate_mean) & DAG == "Ground Truth",
@@ -3891,7 +4165,7 @@ est_to_plot <-
     group_by(Model) |> 
     mutate(
         gt_est_diff = if_else(
-            is.nan(gt_est_diff),
+            is.nan(gt_est_diff) | is.na(gt_est_diff),
             estimate_mean - estimate_mean[DAG == "Ground Truth"],
             gt_est_diff
         )
@@ -3905,12 +4179,12 @@ est_to_plot <-
                    "Ground Truth",
                    "Ground Truth (est)",
                    "Expert DAG",
-                   "Observable",
-                   "Potentially Observable"
+                   "Learned DAG",
+                   "Learned PAG"
                )))
     
 pal_cols <- palette.colors()
-pal_cols <- c(pal_cols[1], "#777777", pal_cols[2], pal_cols[3])
+pal_cols <- c(pal_cols[1], "#777777", pal_cols[2], pal_cols[3], pal_cols[4])
 ```
 
 ```{r plotting-individual-simulation-results}
@@ -3918,14 +4192,15 @@ pal_cols <- c(pal_cols[1], "#777777", pal_cols[2], pal_cols[3])
 # models into those identifiable and those not
 # Maybe change this to abs effect?
 est_to_plot |> 
-    filter(DAG != "Observable") |> 
-    mutate(DAG = if_else(DAG == "Potentially Observable", "Learned DAG", 
+    filter(DAG != "Potentially Observable") |> 
+    mutate(DAG = if_else(DAG == "Observable", "Learned DAG", 
                          DAG) |> 
                factor(levels = c(
                    "Ground Truth",
                    "Ground Truth (est)",
                    "Expert DAG",
-                   "Learned DAG"
+                   "Learned DAG",
+                   "Learned PAG"
                ))) |> 
     mutate(
         y_pos = as.numeric(factor(Model)) + 
@@ -3959,28 +4234,21 @@ est_to_plot |>
 ```{r plotting-simulation-results-split-by-idXY}
 est_to_plot_grouped <- 
     est_to_plot |> 
-    filter(DAG %in% c(
-        "Potentially Observable", 
-        "Ground Truth", 
-        "Expert DAG")) |> 
-    mutate(DAG = if_else(DAG == "Potentially Observable", "Learned DAG", 
-                         DAG) |> 
-               factor(levels = c(
-                   "Ground Truth",
-                   "Expert DAG",
-                   "Learned DAG"
-               ))) |> 
     group_by(Model) |> 
-    mutate(model_group = if_else(
-        is.nan(estimate_mean[DAG == "Expert DAG"]),
-        "Non-identifiable", 
-        "Identifiable"
+    mutate(model_group = case_when(
+        any(DAG == "Ground Truth (est)") ~ "Unknowable models:\n",
+        is.nan(estimate_mean[DAG == "Expert DAG"]) ~ "Non-identifiable models\n(from potentially\nobservable data):\n", 
+        TRUE ~ "Identifiable models\n(from potentially\nobservable data):\n"
         )) |> 
     ungroup() |> 
+    filter(DAG %in% c(
+        "Learned DAG",
+        "Learned PAG",
+        "Ground Truth",
+        "Expert DAG")) |>
     group_by(model_group) |> 
     mutate(model_group_list = str_c(
         unique(model_group), 
-        " models\n(from observable data):\n",
         str_c(unique(sort(Model)) , collapse = ", "))) |> 
     ungroup() |> 
     mutate(
@@ -3988,7 +4256,8 @@ est_to_plot_grouped <-
             (as.numeric(factor(ogDAG)) - mean(as.numeric(factor(ogDAG)))) * dodge_amt
     )
 
-est_to_plot_grouped |> 
+p.est.sims <- 
+    est_to_plot_grouped |> 
     ggplot(aes(color = DAG, y = y_pos)) + 
     geom_pointinterval(
         aes(x = gt_est_diff,
@@ -3999,14 +4268,49 @@ est_to_plot_grouped |>
     scale_y_continuous(
         breaks = seq_along(levels(factor(est_to_plot_grouped$model_group_list))),
         labels = levels(factor(est_to_plot_grouped$model_group_list)),
-        name = "Model estimates by identifiability"
+        name = "Model estimates"
     ) +
-    annotate("label", x = -0.0, y = c(2), label = "?",
+    annotate("label", x = -0.0, y = c(1.8), label = "?",
              color = pal_cols[3], alpha = 0.4) +
+    annotate("label", x = -0.0, y = c(2.8), label = "?",
+             color = pal_cols[3], alpha = 0.4) +
+    annotate("label", x = -0.0, y = c(3), label = "?",
+             color = "grey20", alpha = 0.4) +
     scale_colour_discrete(palette = palette.colors()) +
-    xlab("Deviation from ground truth estimate") +
+    xlab("Deviation from ground truth estimate (SD)") +
     theme_minimal() +
     theme(legend.position = "bottom")
+
+p.est.sims
+
+
+p.est.sims.2 <- 
+    est_to_plot_grouped |>
+    filter(!str_detect(model_group_list, "Unk")) |> 
+    ggplot(aes(color = DAG, y = y_pos)) + 
+    geom_pointinterval(
+        aes(x = gt_est_diff,
+            xmin = gt_est_diff - 1 *error,
+            xmax = gt_est_diff + 1 *error),
+           alpha = 0.6, size = 5
+    ) +
+    scale_y_continuous(
+        breaks = seq_along(levels(factor(est_to_plot_grouped$model_group_list))),
+        labels = levels(factor(est_to_plot_grouped$model_group_list)),
+        name = "Model estimates"
+    ) +
+    annotate("label", x = -0.0, y = c(1.85), label = "?",
+             color = pal_cols[3], alpha = 0.4) +
+    scale_colour_discrete(palette = palette.colors()) +
+    xlab("Deviation from ground truth estimate (SD)") +
+    theme_minimal() +
+    theme(legend.position = "bottom")
+
+p.est.sims.2
+
+ggsave("figures/FIG--simulation-results.png", p.est.sims.2,
+       width = 10, height = 3)
+
 ```
 
 ```{r}
@@ -4107,7 +4411,7 @@ learned_CDAGs <-
     )
 
 all_CDAGs <- 
-    c(CDAGs_node_group, learned_CDAGs)
+    c(CDAGs, learned_CDAGs)
 ```
 
 ```{r L0-between-all-CDAGs}
@@ -4173,6 +4477,14 @@ tanglegram(dend_L12_all, main_left = "L1-consistency", main_right = "L2-consiste
 
 
 ```{r L012-dist-clusters-across-all}
+
+all_L12_dist_matrix <- 
+    (all_L1_d_matrix + all_L2_d_matrix) / 2
+
+L12_hclust_full <- hclust(
+    as.dist(all_L12_dist_matrix),
+    method = "average")
+
 all_L012_dist_matrix <- 
     (all_L0_d_matrix + all_L1_d_matrix + all_L2_d_matrix) / 3
 
@@ -4202,6 +4514,14 @@ num <- as.integer(sub("^\\D+", "", lab))
 pal  <- setNames(leaf_cols, 1:8)
 labels_colors(dend) <- pal[as.character(num)]
 
+png("figures/FIG--CDAGs-all-dendrogram.png", 
+    width = 10, height = 4, units = "in", res = 300)
+dend |> 
+    hang.dendrogram(hang = 0.1) |>  
+    plot(axes = F, horiz = F) 
+
+
+dev.off()
 
 dend |> 
     hang.dendrogram(hang = 0.1) |>  
@@ -4233,7 +4553,7 @@ labels_colors(dend_perfect) <- palp[as.character(nump)]
 
 tanglegram(dend1 = dend_perfect,
            dend2 = dend,
-           main_left = "Target learning", main_right = "L-Consistency",
+           main_left = "Target learning", main_right = "L-dissimilarity",
            sort = TRUE, edge.lwd = 2, lwd = 2,
            common_subtrees_color_lines = TRUE, 
            highlight_distinct_edges  = F,
@@ -4320,3 +4640,85 @@ in the formalisation process and have other affordances as well.
 - Given a coarsening, check for L1-L2 validity
 - Would be good to have some workflow documented
 
+### A representation of Hierarchical DAGs
+
+Given a a mix of DAGs / CDAGs / coarsenings is there a way to represent both the fine grained structure and the coarse grained structure at the same time? For instance, an initial method might be having the fine-grain nodes sitting within a larger cluster node. However this still needs to have rules for how causal flow / influence moves between the lower and higher abstraction levels. 
+
+For instance, if we are given these two DAGs: 
+
+``` {r}
+lwrDAG <- vnt.tdags$Fine1a |> 
+    bind_nodes(tibble(name = "T", x = 1, y = -0.2, group = "T")) |> 
+    bind_edges(
+        tibble(
+            from = c(1,6), 
+            to = c(6,3), 
+            type = rep("->",2))
+    )
+
+hrDAG <- vnt.tdags$Cluster1W
+    
+lwrDAG |> 
+    ggraph(layout = "manual", x = x, y = y)+
+        geom_edge_fan(
+            arrow = arrow(length = unit(4, 'mm'), type = "closed"),
+            start_cap = circle(6, 'mm'),
+            end_cap = circle(6, 'mm')) +
+        geom_node_point(aes(colour = group), size = 6) +
+        geom_node_text(aes(label = name), colour = "white", alpha = 0.9) +
+        scale_colour_manual(
+            values = first_letter_pal,
+            guide = "none") +
+        xlim(c(-0.1,2.1)) +
+        theme_graph() +
+    ggtitle("A model with fine-grained descriptions")
+```
+
+``` {r}
+hrDAG |> 
+    plot_vnt_dag() +
+    ggtitle("A cluster model that is in agreement, but broader scope")
+```
+
+> Can we represent both these fully? We see that $Z \rightarrow W$, but do not know whether $Z_1 \rightarrow W$, $Z_2 \rightarrow W$, or both. There are similar challenges examining the path $W \rightarrow X$. 
+
+``` {r}
+mrgDag <- 
+    gcm_merge(lwrDAG, hrDAG) |> 
+    activate(nodes) |> 
+    mutate(
+        x = case_when(
+            name == "X1" ~ x + 0.1,
+            TRUE ~ x
+        ),
+        y = case_when(
+            name == "Z" ~ y + 0.2,
+            name == "X1" ~ y + 0.2,
+            TRUE ~ y
+        )) 
+
+mrgDag |> 
+    ggraph(layout = "manual", x = x, y = y)+
+        geom_edge_fan(
+            arrow = arrow(length = unit(4, 'mm'), type = "closed"),
+            start_cap = circle(6, 'mm'),
+            end_cap = circle(6, 'mm')) +
+        geom_node_point(aes(colour = group), size = 6) +
+        geom_node_text(aes(label = name), colour = "white", alpha = 0.9) +
+        scale_colour_manual(
+            values = first_letter_pal,
+            guide = "none") +
+        theme_graph()
+
+```
+
+We can see that even if both models are regarded with high confidence we have some unanswered questions. For instance, is there a path from $W$ to $T$?
+
+A proposal: 
+
+- Draw both high and low level abstractions on the same graph. Clusters *might* be drawn larger for clarity. 
+- Connect low level (finer grained) abstractions with their higher level abstraction via a `-<` edge, which is a little like a less than or subset sign, with the `-` end to the finer grained, lower level abstraction. 
+- Influence flows as normal from lower to higher (left to right along `-<`). A change in the sub-component of a thing changes the whole. 
+- The challenge is to imagine what flows from the higher to lower level path (left to right along `>-` paths). 
+
+The last point is the crux of the matter. Just because we influence the higher level construct does not tell us *which* sub-component is influenced. This (if no other information is available) would need to be a *weaker* flow of information, perhaps distributed across the sub-components (and maybe a noise parameter or something to represent that there are 'all the other' sub-components in the model). This could maybe work in a similar way to "conditioning on a decsendant" that partially controls for a variable. 
