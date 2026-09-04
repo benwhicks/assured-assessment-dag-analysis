@@ -161,96 +161,383 @@ adorn_switches_exist <- function(d, X, Y) {
 
 # Merging two graphs --------------
 
-gcm_merge <- function(g1, g2) {
-    if (class(g1)[[1]] == "dagitty") g1 <- dagitty_to_tidygraph(g1)
-    if (class(g2)[[1]] == "dagitty") g2 <- dagitty_to_tidygraph(g2)
-    nodes <- bind_rows(
-        g1 %N>% as_tibble(),
-        g2 %N>% as_tibble()
-    ) |> distinct(name, .keep_all = TRUE)
+gcm_merge <- function(g1, g2, sep = ";",
+                      expand_edge_types = TRUE,
+                      edge_weight_var = NULL) {
+    if (inherits(g1, "dagitty")) g1 <- dagitty_to_tidygraph(g1)
+    if (inherits(g2, "dagitty")) g2 <- dagitty_to_tidygraph(g2)
     
+    nodes <- bind_rows(g1 %N>% as_tibble(), g2 %N>% as_tibble()) |>
+        distinct(name, .keep_all = TRUE)
+    
+    named_edge_df <- function(g) {
+        nm <- igraph::V(g)$name
+        ne <- 
+            g %E>% 
+            as_tibble() |> 
+            mutate(across(from:to, \(i) nm[i]))
+        
+        if (!("type" %in% names(ne))) {
+            ne <- ne |> 
+                mutate(type = "->")
+        }
+        
+        if (!is.null(edge_weight_var)) {
+            if (!(edge_weight_var %in% names(ne))) {
+                ne <- ne |> 
+                    mutate({{edge_weight_var}} := 1)
+                message(paste(
+                    "Imputed edge weights, check if", edge_weight_var, 
+                    "is the correct variable for wedge weight."))
+            }
+        }
+        return(ne)
+    }
+    
+    first_eq_last <- function(x) str_sub(x, 1, 1) == str_sub(x, -1, -1)
+    
+    # Need to impute 'type' and 'edge_w' if needed.
     edges <- bind_rows(
-        g1 %E>% as_tibble() |> 
-            mutate(across(from:to, \(i) igraph::V(as.igraph(g1))$name[i])),
-        g2 %E>% as_tibble() |> 
-            mutate(across(from:to, \(i) igraph::V(as.igraph(g2))$name[i]))
-    ) |> 
-        group_by(from, to) |> 
-        summarise( # Any meta-data on nodes needs to be collapsed
-            across(where(is.numeric), \(x)sum(x)),
-            across(where(is.character), \(c) str_c(c, collapse = ";")),
-            across(where(is.factor), \(c) str_c(c, collapse = ";")),
-            .groups = "drop")
+        named_edge_df(g1), 
+        named_edge_df(g2)) |>
+        mutate( 
+            # This deals with edges like X -- Y in one graph and Y -- X in
+            # the other. We want these described the same. 
+            .sym = first_eq_last(type), # checking if edge type is symmetric
+            .a   = if_else(.sym & to < from, to, from),
+            .b   = if_else(.sym & to < from, from, to),
+            from = .a, to = .b
+        ) |>
+        select(-.sym, -.a, -.b) |>
+        group_by(from, to, type) |>
+        summarise(
+            across(where(is.numeric), \(x) sum(x, na.rm = TRUE)),
+            across(where(is.character) | where(is.factor),
+                   \(x) str_flatten(unique(as.character(x)), collapse = sep,
+                                    na.rm = TRUE)),
+            .groups = "drop"
+        )
     
     tbl_graph(nodes = nodes, edges = edges)
 }
+
+gcm_split_types <- function(g, sep = ";") {
+    tbl_graph(
+        nodes = g %N>% as_tibble(),
+        edges = g %E>% as_tibble() |>
+            separate_longer_delim(type, delim = sep) |>
+            distinct()
+    )
+}
+
+
+# Quick plot of a GCM
+#' Quick plot of a GCM / DAG / PDAG / PAG with mixed edge types
+#'
+#' Endpoint marks are parsed from the first and last character of `type`,
+#' so both the PAG notation ("o->", "o-o", "-->", "<-o") and the dagitty
+#' notation ("@->", "@-@") work, alongside "->", "<->", "--".
+#'
+#'   first char:  "<" arrowhead   "-" tail   "o"/"@" circle
+#'   last  char:  ">" arrowhead   "-" tail   "o"/"@" circle
+#'
+#' Circles are drawn as open points just inside the node, since ggraph has
+#' no circle arrow type. Their offset is in data units, so `mark_offset`
+#' may need tuning once per figure size.
+#'
+#' @param edge_weight_var name of a numeric edge column, as a string. NULL
+#'   (default) draws every edge at `flat_alpha`. Otherwise the column is
+#'   mapped to edge alpha over `alpha_range`, so weak edges fade rather
+#'   than disappear.
+
+gcm_qplot <- function(g,
+                      layout          = "sugiyama",
+                      node_size       = 6,
+                      label_size      = 3,
+                      arrow_mm        = 2.5,
+                      arc             = 0.25,
+                      mark_size       = 1.9,
+                      mark_offset     = NULL,
+                      edge_weight_var = NULL,
+                      alpha_range     = c(0.3, 0.95),
+                      flat_alpha      = 0.9,
+                      title           = NULL) {
+    
+    g <- tidygraph::as_tbl_graph(g)
+    node_df <- tibble::as_tibble(g, active = "nodes")
+    
+    if (!"name" %in% names(node_df)) {
+        g <- g |> activate(nodes) |> mutate(name = as.character(dplyr::row_number()))
+        node_df <- tibble::as_tibble(g, active = "nodes")
+    }
+    if (!"type" %in% names(tibble::as_tibble(g, active = "edges")))
+        g <- g |> activate(edges) |> mutate(type = "->")
+    
+    ## ---- resolve the weight column ------------------------------------------
+    e_tbl <- tibble::as_tibble(g, active = "edges")
+    use_w <- FALSE
+    
+    if (!is.null(edge_weight_var)) {
+        if (!edge_weight_var %in% names(e_tbl)) {
+            warning("edge_weight_var '", edge_weight_var,
+                    "' not found in edge data; using flat alpha")
+        } else if (!is.numeric(e_tbl[[edge_weight_var]])) {
+            warning("edge_weight_var '", edge_weight_var,
+                    "' is not numeric; using flat alpha")
+        } else {
+            use_w <- TRUE
+        }
+    }
+    
+    g <- g |> activate(edges) |> mutate(
+        .w = if (use_w) .data[[edge_weight_var]] else flat_alpha
+    )
+    
+    if (use_w && anyNA(tibble::as_tibble(g, active = "edges")$.w)) {
+        warning("NA values in '", edge_weight_var, "' set to the observed minimum")
+        g <- g |> activate(edges) |>
+            mutate(.w = tidyr::replace_na(.w, min(.w, na.rm = TRUE)))
+    }
+    
+    ## ---- parse endpoint marks ------------------------------------------------
+    mark_of <- function(ch) dplyr::case_when(
+        ch %in% c("<", ">") ~ "arrow",
+        ch %in% c("o", "@") ~ "circle",
+        TRUE                ~ "tail"
+    )
+    
+    g <- g |> activate(edges) |> mutate(
+        .m_from = mark_of(substr(type, 1, 1)),
+        .m_to   = mark_of(substr(type, nchar(type), nchar(type))),
+        .ends   = dplyr::case_when(
+            .m_from == "arrow" & .m_to == "arrow" ~ "both",
+            .m_to   == "arrow"                    ~ "last",
+            .m_from == "arrow"                    ~ "first",
+            TRUE                                  ~ "none"
+        ),
+        .style  = dplyr::case_when(
+            .m_from == "circle" | .m_to == "circle" ~ "partial",
+            .ends == "both"                         ~ "bidirected",
+            .ends == "none"                         ~ "undirected",
+            TRUE                                    ~ "directed"
+        )
+    )
+    
+    edge_df <- tibble::as_tibble(g, active = "edges")
+    
+    if (any(grepl(";", edge_df$type, fixed = TRUE)))
+        warning("collapsed `type` values found - run gcm_split_types() first")
+    
+    ## ---- layout --------------------------------------------------------------
+    lay <- if (all(c("x", "y") %in% names(node_df))) {
+        ggraph::create_layout(g, layout = "manual", x = node_df$x, y = node_df$y)
+    } else {
+        ggraph::create_layout(g, layout = layout)
+    }
+    
+    ## ---- circle marker positions, in data units ------------------------------
+    seg <- edge_df |>
+        mutate(x1 = lay$x[from], y1 = lay$y[from],
+               x2 = lay$x[to],   y2 = lay$y[to],
+               len = sqrt((x2 - x1)^2 + (y2 - y1)^2)) |>
+        filter(len > 0)
+    
+    off <- if (is.null(mark_offset)) 0.15 * stats::median(seg$len) else mark_offset
+    
+    marks <- bind_rows(
+        seg |> filter(.m_from == "circle") |>
+            mutate(mx = x1 + off / len * (x2 - x1),
+                   my = y1 + off / len * (y2 - y1)),
+        seg |> filter(.m_to == "circle") |>
+            mutate(mx = x2 - off / len * (x2 - x1),
+                   my = y2 - off / len * (y2 - y1))
+    ) |> select(mx, my, .w)
+    
+    ## ---- layers --------------------------------------------------------------
+    cap <- ggraph::circle(node_size / 2 + 1.5, "mm")
+    ar  <- function(e) grid::arrow(type = "closed",
+                                   length = grid::unit(arrow_mm, "mm"), ends = e)
+    
+    link <- function(e) geom_edge_link(
+        aes(filter = .ends == e & .style != "bidirected",
+            edge_colour = .style, edge_linetype = .style, edge_alpha = .w),
+        arrow = if (e == "none") NULL else ar(e),
+        start_cap = cap, end_cap = cap, edge_width = 0.5
+    )
+    
+    ## identity when flat, so a constant column isn't rescaled to a midpoint
+    alpha_edge <- if (use_w) {
+        scale_edge_alpha_continuous(range = alpha_range, name = edge_weight_var)
+    } else {
+        scale_edge_alpha_identity()
+    }
+    alpha_mark <- if (use_w) {
+        scale_alpha_continuous(range = alpha_range, guide = "none")
+    } else {
+        scale_alpha_identity()
+    }
+    
+    ggraph(lay) +
+        link("none") + link("last") + link("first") +
+        ## bidirected arced, so it separates from a co-existing directed edge
+        geom_edge_arc(
+            aes(filter = .style == "bidirected",
+                edge_colour = .style, edge_linetype = .style, edge_alpha = .w),
+            strength = arc, arrow = ar("both"),
+            start_cap = cap, end_cap = cap, edge_width = 0.5
+        ) +
+        geom_point(data = marks, aes(x = mx, y = my, alpha = .w),
+                   shape = 21, fill = "white", colour = "grey30",
+                   size = mark_size, stroke = 0.6, inherit.aes = FALSE) +
+        geom_node_point(size = node_size, colour = "grey85") +
+        geom_node_text(aes(label = name), size = label_size) +
+        alpha_edge + alpha_mark +
+        scale_edge_colour_manual(values = c(directed = "grey10", bidirected = "grey30",
+                                            undirected = "grey30", partial = "grey30"),
+                                 guide = "none") +
+        scale_edge_linetype_manual(values = c(directed = "solid", bidirected = "dashed",
+                                              undirected = "dotted", partial = "dotted"),
+                                   guide = "none") +
+        labs(title = title) +
+        theme_graph(base_family = "sans") +
+        theme(plot.margin = margin(2, 2, 2, 2))
+}
+
+
+## --- checks -----------------------------------------------------------------
+## g <- tbl_graph(nodes = tibble(name = c("CD.Str","Grade","S.Att","S.Kn")),
+##                edges = tibble(from = c(1,1,1,3,4), to = c(2,3,4,2,2),
+##                               type = c("o->","o-o","o-o","o->","o->"),
+##                               n = c(8, 1, 4, 6, 2)))
+## gcm_qplot(g)                            # all edges at flat_alpha
+## gcm_qplot(g, edge_weight_var = "n")     # n=1 at 0.3, n=8 at 0.95
+## gcm_qplot(g, edge_weight_var = "nope")  # warns, falls back to flat
+## --- checks -----------------------------------------------------------------
+## tbl_graph(nodes = tibble(name = c("CD.Str","Grade","S.Att","S.Kn")),
+##           edges = tibble(from = c(1,1,1,3,4), to = c(2,3,4,2,2),
+##                          type = c("o->","o-o","o-o","o->","o->"))) |>
+##   gcm_qplot()
+##   -> 5 dotted grey edges; open circles at CD.Str on all three of its edges,
+##      at S.Att and S.Kn on their own ends, arrowheads into Grade
+
+## --- checks -----------------------------------------------------------------
+## g <- gcm_projection(dagitty("dag{L->X L->Y X->Y}"), latent_nodes = "L")
+## gcm_plot(g)
+##   both X->Y (straight) and X<->Y (dashed arc) must be visible and distinct
+##
+## gcm_latent_projection(dagitty("dag{L1->L2 L2->X L2->Y L1->Z}"),
+##                       latent_nodes = c("L1","L2")) |> gcm_plot()
+##   three dashed arcs, no solid lines
 
 # ===================================== #
 # Graph projections ---------------------
 # ===================================== #
 
 
-gcm_latent_projection <- function(g, 
-                                  latent_nodes = NULL, 
-                                  keep_nodes = NULL,
-                                  noisy = FALSE) {
+
+#' Latent projection of a DAG onto a set of nodes
+#'
+#' Verma-Pearl projection. Returns an ADMG over the retained nodes:
+#'   x -> y   iff a directed path x ~> y has all intermediate nodes latent
+#'   x <-> y  iff x and y are both reachable from some latent node via
+#'            paths whose intermediate nodes are all latent
+#'
+#' Both edges may hold for the same pair; that is correct, not a duplicate.
+#' Edge type is carried in the `type` column ("->" / "<->"), since igraph
+#' stores every edge directionally.
+
+gcm_projection <- function(
+        g,
+        # Either use latent (latent projection) or keep (projection onto)
+        latent_nodes = NULL,
+        keep_nodes   = NULL,
+        noisy        = FALSE) {
     
-    ig <- as.igraph(g)
-    all_nodes <- igraph::V(ig)$name
+    if (inherits(g, "dagitty")) g <- dagitty_to_tidygraph(g)
+    ig <- igraph::as.igraph(g)
+    
+    all_nodes <- igraph::V(g)$name
     
     if (is.null(keep_nodes)) {
-        include_nodes <- setdiff(all_nodes, latent_nodes)
+        observed <- setdiff(all_nodes, latent_nodes)
     } else {
-        include_nodes <- intersect(all_nodes, keep_nodes)
+        absent <- setdiff(keep_nodes, all_nodes)
+        if (length(absent) && noisy)
+            message("not in graph, ignored: ", paste(absent, collapse = ", "))
+        observed <- intersect(all_nodes, keep_nodes)
     }
-    latent_nodes <- setdiff(all_nodes, include_nodes)
+    latent <- setdiff(all_nodes, observed)
     
-    if (length(latent_nodes) == 0) {
-        if (noisy) message("No latent nodes in graph, returning original graph")
+    if (length(latent) == 0) {
+        if (noisy) message("no latent nodes; returning original graph")
+        if (!("type" %in% edge_attr_names(g))) {
+            g <- g %E>%
+                mutate(type = "->")
+        }
         return(g)
     }
     
-    edge_exists <- function(ig, from, to) {
-        paste(from, to) %in% 
-            paste(igraph::tail_of(ig, igraph::E(ig))$name,
-                  igraph::head_of(ig, igraph::E(ig))$name)
-    }
-    
-    ig_proj <- ig
-    
-    for (node in latent_nodes) {
-        parents  <- igraph::neighbors(ig_proj, node, mode = "in")$name
-        children <- igraph::neighbors(ig_proj, node, mode = "out")$name
-        
-        causal_edges <- expand_grid(from = parents, to = children) |> 
-            filter(from != to,
-                   !edge_exists(ig_proj, from, to))
-        
-        confound_edges <- expand_grid(from = children, to = children) |> 
-            filter(from != to,
-                   !edge_exists(ig_proj, from, to))
-        
-        new_edges <- bind_rows(causal_edges |> 
-                                   mutate(path_type = "causal"), 
-                               confound_edges |> 
-                                   mutate(path_type = "confound"))
-        
-        if (nrow(new_edges) > 0) {
-            ig_proj <- igraph::add_edges(
-                ig_proj,
-                as.vector(rbind(new_edges$from, new_edges$to)),
-                attr = list(path_type = new_edges$path_type)
-            )
+    ## observed nodes reachable from `v` through all-latent intermediates.
+    ## traversal stops on reaching an observed node, so intermediates stay latent.
+    reach_obs <- function(v) {
+        frontier <- igraph::neighbors(g, v, mode = "out")$name
+        found    <- character(0)
+        seen     <- character(0)
+        while (length(frontier)) {
+            found    <- union(found, intersect(frontier, observed))
+            step     <- setdiff(intersect(frontier, latent), seen)
+            seen     <- union(seen, step)
+            frontier <- unique(unlist(lapply(
+                step, function(u) igraph::neighbors(g, u, mode = "out")$name
+            )))
         }
+        setdiff(found, v)
     }
     
-    if (any(duplicated(t(apply(as.matrix(gcm_edgelist(g)), 1, sort)))))
-        warning("graph contains reciprocal edges — not a DAG")
+    dir_edges <- observed |>
+        map(\(x) tibble(from = x, to = reach_obs(x), type = "->")) |>
+        list_rbind()
     
-    igraph::delete_vertices(ig_proj, latent_nodes) |> 
-        as_tbl_graph()
+    bi_edges <- latent |>
+        map(\(l) {
+            s <- sort(reach_obs(l))
+            if (length(s) < 2) return(NULL)
+            as_tibble(t(combn(s, 2)), .name_repair = ~ c("from", "to")) |>
+                mutate(type = "<->")
+        }) |>
+        list_rbind()
+    
+    edges <- unique(rbind(dir_edges, bi_edges))
+    nodes <- data.frame(name = observed, stringsAsFactors = FALSE)
+    
+    if (is.null(edges) || nrow(edges) == 0) {
+        return(tidygraph::tbl_graph(nodes = nodes, directed = TRUE))
+    }
+    
+    tidygraph::tbl_graph(
+        nodes    = nodes,
+        edges    = data.frame(from = match(edges$from, observed),
+                              to   = match(edges$to,   observed),
+                              type = edges$type,
+                              stringsAsFactors = FALSE),
+        directed = TRUE
+    )
 }
 
+
+## --- checks -----------------------------------------------------------------
+# gcm_projection(dagitty("dag{L1->L2 L2->X L2->Y L1->Z}"),
+#                       latent_nodes = c("L1","L2"))
+##   -> X<->Y, X<->Z, Y<->Z            (3 edges, none directed)
+##
+# gcm_projection(dagitty("dag{L->X L->Y X->Y}"), latent_nodes = "L")
+#   -> X->Y and X<->Y                 (both, on the same pair)
+##
+## gcm_latent_projection(dagitty("dag{X->L L->Y}"), latent_nodes = "L")
+##   -> X->Y                           (chain, no confounding)
+##
+## gcm_latent_projection(dagitty("dag{X->L Y->L L->Z}"), latent_nodes = "L")
+##   -> X->Z, Y->Z                     (collider: X,Y NOT confounded)
 
 
 gcm_to_mag <- function(g, S) {
@@ -273,7 +560,7 @@ gcm_to_mag <- function(g, S) {
 
 
 gcm_to_cpdag <- function(g) {
-    if (inherits(g, "tbl_graph")) g <- tidygraph_to_dagitty(g)
+    if (inherits(g, "dagitty")) g <- dagitty_to_tidygraph(g)
     m <- as_adjacency_matrix(g, sparse = FALSE)
     cpdag_m <- pcalg::dag2cpdag(m)
     # dag2cpdag drops dimnames, so restore from original
@@ -313,7 +600,7 @@ gcm_cluster_graph <- function(g, .f,
     # Would also be nice to message / flag any cycles induced by the clustering
     # or bi-directional edges induced
     
-    if (class(g)[[1]] == "dagitty") g <- dagitty_to_tidygraph(g)
+    if (inherits(g, "dagitty")) g <- dagitty_to_tidygraph(g)
     
     new_nodes <- g %N>% 
         as_tibble() |> 
