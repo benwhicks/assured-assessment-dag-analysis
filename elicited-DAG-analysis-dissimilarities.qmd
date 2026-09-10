@@ -1040,7 +1040,7 @@ code_node_measurability <- function(node) {
         node == "S.Act.Fb" ~ "L",
         node == "S.Act.Fb.Post" ~ "L",
         str_detect(node, "^S\\.Act") ~ "PO", 
-        str_detect(node, "^S\\.Kn") ~ "PO", 
+        str_detect(node, "^S\\.Kn") ~ "O", # Changed to observable 
         str_detect(node, "^S") ~ "L", 
         # Help
         node == "H.AI.Agent" ~ "O", # within system tool 
@@ -1082,12 +1082,14 @@ coarsen_node_measurability <- function(ng_list) {
   x <- str_squish(as.character(ng_list))
 
   n_tot <- str_count(x, "[^;]+")
+  n_dw <- str_count(x, "(?<![A-Z])(DW)(?![A-Z])")
   n_obs <- str_count(x, "(?<![A-Z])(O|DW)(?![A-Z])")
   n_po  <- str_count(x, "(?<![A-Z])PO(?![A-Z])")
   n_lat <- str_count(x, "(?<![A-Z])L(?![A-Z])")
 
   out <- case_when(
     is.na(x) | n_tot == 0        ~ NA_character_,
+    n_dw == n_tot                ~ "Observed",
     n_obs == n_tot               ~ "Observable",
     n_po  == n_tot               ~ "Potentially observable",
     n_lat == n_tot               ~ "Latent",
@@ -1100,7 +1102,7 @@ coarsen_node_measurability <- function(ng_list) {
 
   factor(out, levels = c("Latent", "Likely latent", dyn,
                          "Potentially observable", "Likely observable",
-                         "Observable"))
+                         "Observable", "Observed"))
 }
 
 
@@ -3317,50 +3319,40 @@ node_groups_table |>
     arrange(measurability)
 ```
 
-## Creating a simulated data set
+Here the categories use the following rules:
+
+- *Observed* node groups are made entirely from nodes in the data warehouse. 
+- *Observable* node groups are made from Observable nodes or nodes already in the Data Warehouse. 
+- *Likely observable* node groups are made from nodes that are a mix of potentially observable and observable.
+- *Potentially observable* node groups are made from nodes that are potentially observable.
+- *Likely latent* node groups are made from nodes that are a mix of Latent and Potentially observable nodes. 
+- *Latent* node groups are made from nodes that are *Latent*
+
+## Creating a simulated data sets
 
 We design this experiment as follows. We ask the question can a causal
 graph discovered from available data generate similar answers to the
 problem of assuring assessment? This translates to getting an unbiased
-estimate of Student Knowledge on Grade. As such 3 of the models are
-excluded, lacking sufficient adjustment sets (2 models) or having broken
-student knowledge into multiple nodes (1 model). For the "potentially
-observable" nodes a single descendant node is added, so that
-$N \rightarrow N_P$, a proxy measurement node that is not the exact node
-measured but whose value depends only on the potentially observable node
-and some additional noise. The set of proxy nodes for the potentially
-observable ($PO$) nodes we denote ($\hat{PO}$). Each of the 5 remaining
-GCMs, with their additional proxy measurement nodes, is used to generate
-a synthetic data set. We assuming each node has an equal linear effect
-on its descendants ($\beta=0.4$), generated using `simulateSEM` of the
-`dagitty` package in R. This treats all variables as continuous with
-mean 0 and variance 1.
+estimate of Student Knowledge on Grade, a close proxy for the generaly problem
+of assuring assessment. 
+We use the Cluster DAGs as a simplified version with more cohesion between the 
+models to faciliate comparison later. 
 
-```{r sim-parameter-choices}
-sim_signal_strength <- list(
-    "idyllic" = 0.9, 
-    "typical" = 0.4, 
-    "noisy" = 0.1)
+Several datasets are created:
 
-tibble(Scenario = names(sim_signal_strength),
-       Beta = as.numeric(sim_signal_strength)) |>
-    mutate(
-       `Variance due to each parent node` = Beta^2 / (1 + Beta^2)
-       ) |> 
-    knitr::kable(digits = 3)
-```
+- Ground truth *simulated data*. This uses every node and the expert elicited GCM to generate a data set. 
+- Observed data subset. This uses the *Observed* nodes only from the *simulated data*
+- Observable data subset. This uses the *Observed* and *Observable* nodes from the *simulated data*, as well as the *Likely observable* nodes with additional noise added to them. 
+- Expansive observable data set. This includes *Observed*, *Observable* and *Likely observable* nodes, as well as the *Potentially observable* nodes with additional noise, representing creating additional data measures to generate proxies for those nodes.
 
-We then apply a structure learning algorithm to each models simulated
-data in three phases: learning from the currently measured data only
-(only DW nodes), learning from all observable nodes (DW and O) nodes,
-and finally learning from all potentially available data (DW, O and
-$\hat{PO}$). This represents increasing levels of resourcing applied to
+
+We then apply a structure learning algorithm to each dataset above, except the ground truth.  This represents increasing levels of resourcing applied to
 learning the underlying causal structure, given the model.
 
 Note we are working under a local assumption that each model is the
 'ground truth', but fully acknowledge that we do not know for this
 system what the true model is. However, if the structure learning claims
-of application to discover latent nodes are to be believed (CITE) then
+of application to discover latent nodes are to be believed then
 we should see some reasonable convergence towards each locally true
 model.
 
@@ -3372,67 +3364,20 @@ model.
 
 # should add layout!!
 # use same x, y from main graph
+BETA = 0.4
 
+simSEM <- partial(simulateSEM, eps = 1, standardized = F, N = 1000,
+                  b.default = BETA)
 
-simSEM <- partial(simulateSEM, eps = 1, standardized = F, N = 1000)
-# simSEM <- partial(simulateLogistic, eps = 1, N = 1000)
+simmed.data <- 
+    CDAGs |> 
+    map(
+        \(d)
+        simSEM(tidygraph_to_dagitty(d)))
 
-bn_fit_simulations <- function(
-        dag, observable_nodes,
-        force_observable = c("Grade", "S.Kn"),
-        Beta = 0.4,
-        proxy_nodes = NULL, # not implemented. Add to observable but also add noise
-        proxy_noise_sd = NULL, # will use Beta if not specified
-        blacklist = tibble(
-            from = "Grade", 
-            to = "S.Kn")) {
-    
-    observable_nodes <- union(observable_nodes, force_observable)
-    # getting simulated data, and subsets
-    d.sim.sem <- simSEM(dag, b.default = Beta)
-    d.o <- as.data.frame(d.sim.sem |> select(all_of(observable_nodes)))
-    if (!is.null(proxy_nodes)) {
-        proxy_nodes <- setdiff(proxy_nodes, force_observable)
-        # adding in proxy nodes, with additional noise due to using proxy measurement
-        if (is.null(proxy_noise_sd)) proxy_noise_sd <- Beta
-        d.proxy <- as.data.frame(d.sim.sem |> select(all_of(proxy_nodes)))
-        d.proxy <- lapply(d.proxy, \(x) x + rnorm(length(x), 0, proxy_noise_sd))
-    }
-    
-    # fitting BNets
-    bn.o =    bnlearn::bn.fit(
-        bnlearn::hc(
-            d.o,
-            blacklist = blacklist), d.o)
-    bn.DAG.o <- bn_to_dagitty(bn.o)
-    
-    if (!is.null(proxy_nodes)) {
-        d.opo <- bind_cols(d.o, d.proxy)
-        bn.opo = bnlearn::bn.fit(
-            bnlearn::hc(
-                d.opo,
-                blacklist = blacklist), d.opo)
-        bn.DAG.opo <- bn_to_dagitty(bn = bn.opo)
-    } else {
-        d.opo <- NULL
-        bn.opo <-  NULL
-        bn.DAG.opo <-  NULL
-    }
-    
-    return( # returns a named list of simmed data and models
-        list(
-            simdata = d.sim.sem,
-            # Only observable nodes
-            simdata.o     = d.o,
-            bn.o    = bn.o,
-            bn.DAG.o = bn.DAG.o,
-            # Including Potentially Observable (PO), so ALL non-latent nodes
-            simdata.opo  = d.opo,
-            bn.opo = bn.opo,
-            bn.DAG.opo = bn.DAG.opo
-    ))
-}
+```
 
+``` {r learn-DAGs-from-simmed-data}
 bn_to_dagitty <- function(bn) {
   edges <- bnlearn::arcs(bn) |> as_tibble()
   all_nodes <- bnlearn::nodes(bn)
@@ -3444,6 +3389,116 @@ bn_to_dagitty <- function(bn) {
                 " }"))
 }
 
+bn_fit_simulations <- function(
+        dag, 
+        data,
+        observable_nodes,
+        force_observable = c("Grade", "S.Kn"),
+        Beta = BETA,
+        # Extra nodes, but that have additional noise
+        proxy_nodes = NULL, 
+        proxy_noise_sd = NULL, # will use Beta /2 if not specified
+        blacklist = tibble(
+            from = "Grade", 
+            to = "S.Kn")) {
+    
+    observable_nodes <- union(observable_nodes, force_observable)
+    # getting simulated data, and subsets
+    d.learn <- as.data.frame(data |> select(all_of(observable_nodes)))
+    if (!is.null(proxy_nodes)) {
+        proxy_nodes <- setdiff(proxy_nodes, force_observable)
+        # adding in proxy nodes, with additional noise due to using proxy measurement
+        if (is.null(proxy_noise_sd)) proxy_noise_sd <- 0.5 * Beta
+        d.proxy <- as.data.frame(data |> select(all_of(proxy_nodes)))
+        d.proxy <- lapply(d.proxy, \(x) x + rnorm(length(x), 0, proxy_noise_sd))
+        d.learn <- bind_cols(d.learn, d.proxy)
+    }
+    
+    # fitting BNet
+    learned.fit <- 
+        bnlearn::bn.fit(
+            bnlearn::hc(d.learn, blacklist = blacklist),
+            d.learn)
+    learned.DAG <- bn_to_dagitty(learned.fit)
+
+    return( # returns a named list of simmed data and models
+        list(
+            # Only observable nodes
+            observed.data = d.learn,
+            learned.fit = learned.fit,
+            learned.DAG = learned.DAG
+    ))
+}
+
+get_nodes_from_measurability_list <- function(g, measure_list) {
+    g |> 
+        activate(nodes) |> 
+            as_tibble() |> 
+            filter(measurability_node_group %in% measure_list) |> 
+            pull(name)
+}
+
+model_name_list <- str_c("M", 1:8) |> set_names()
+
+# Two experiments:
+# - Observable, with Likely observable as proxies
+# - Observable and Likely observable, with Potentially observable as proxies
+fit_observed <- function(M) {
+    tDAG <- CDAGs[[M]]
+    DAG <- tidygraph_to_dagitty(tDAG)
+    bn_fit_simulations(
+        dag = DAG,
+        data = simmed.data[[M]],
+        observable_nodes = tDAG |> 
+            get_nodes_from_measurability_list(c("Observed")),
+        proxy_nodes = tDAG |> 
+            get_nodes_from_measurability_list(c("Observable"))
+    )
+}
+
+fit_observable <- function(M) {
+    tDAG <- CDAGs[[M]]
+    DAG <- tidygraph_to_dagitty(tDAG)
+    bn_fit_simulations(
+        dag = DAG,
+        data = simmed.data[[M]],
+        observable_nodes = tDAG |> 
+            get_nodes_from_measurability_list(c("Observed", "Observable")),
+        proxy_nodes = tDAG |> 
+            get_nodes_from_measurability_list(c("Likely observable"))
+    )
+}
+
+fit_potentially_observable <- function(M) {
+    tDAG <- CDAGs[[M]]
+    DAG <- tidygraph_to_dagitty(tDAG)
+    bn_fit_simulations(
+        dag = DAG,
+        data = simmed.data[[M]],
+        observable_nodes = tDAG |> 
+            get_nodes_from_measurability_list(c(
+                "Observed", 
+                "Observable", 
+                "Likely observable")),
+        proxy_nodes = tDAG |> 
+            get_nodes_from_measurability_list(c("Potentially observable"))
+    )
+}
+
+
+learned_bn_observed <- 
+    model_name_list |> 
+    map(fit_observed)
+
+learned_bn_observable <- 
+    model_name_list |> 
+    map(fit_observable)
+
+learned_bn_potentially_observable <- 
+    model_name_list |> 
+    map(fit_potentially_observable)
+    
+
 # Thinking of a simple dag X -> Y, we have 
 # Var(Y) = b^2 * Var(X) + Var(eps) -- eps is the noise, and here it is set to 1 by default
 # then Var(Y) = b^2 + 1
@@ -3451,97 +3506,10 @@ bn_to_dagitty <- function(bn) {
 # R^2 = Var(explained) / Var(total)
 # R^2 = b^2 / (b^2 + 1)
 
-dagitty_to_bn <- function(dag) {
-  
-  edges <- dagitty::edges(dag) |> 
-    as_tibble() |> 
-    filter(e == "->") |>  # directed edges only, excludes bidirected
-    select(v, w) |> 
-    rename(from = v, to = w)
-  
-  nodes <- unique(c(edges$from, edges$to))
-  
-  # Build empty network then set arcs
-  net <- bnlearn::empty.graph(nodes)
-  bnlearn::arcs(net) <- as.matrix(edges)
-  net
-}
+```
 
 
-causal_estimate_over_all_adj_sets <- function(
-        dag, data, latent_nodes = NULL,
-        exposure = "S.Kn", outcome = "Grade",
-        x1_val = 1, x0_val = 0) {
-    # This estimates P(Grade|S.Kn, Adjustment Set) over all adjustment sets
-    # This will give a range of that the model suggests is the true effect
-    if (is.null(dag)) {
-        list(adjustment_set = NULL,
-                estimate = NULL,
-                std_error = NULL)
-    }
-    
-    adj_sets <- adjustmentSets(
-        dag, 
-        exposure = exposure, outcome = outcome,
-        type = "all")
-    
-    if (!is.null(latent_nodes)) {
-        # remove any with latent nodes 
-        adj_sets <- keep(adj_sets, \(x) !any(x %in% latent_nodes))
-    }
-    # Throw error if none!
-    estimate_per_set <- map(adj_sets, function(adj_set) {
-        if (length(adj_set) == 0) {
-            message("No adjustment needed - regress directly")
-            formula_str <- str_c(outcome, " ~ ", exposure)
-        } else {
-            formula_str <- str_c(outcome, " ~ ", exposure, " + ",
-                                 str_c(adj_set, collapse = " + "))
-        }
-        if (class(data[[1]]) == "factor") {
-            fit <- glm(as.formula(formula_str), data = data, family = binomial)
-            x1_data <- data |> 
-                mutate({{exposure}} := factor(x1_val, levels = c(-1,1)))
-            x0_data <- data |> 
-                mutate({{exposure}} := factor(x0_val, levels = c(-1,1)))
-        } else {
-            fit <- lm(as.formula(formula_str), data = data)
-            x1_data <- data |> 
-                mutate({{exposure}} := x1_val)
-            x0_data <- data |> 
-                mutate({{exposure}} := x0_val)
-        }
-        # Simulating for potential outcomes
-        y1_x1 <- predict(fit,
-                     newdata = x1_data,
-                     se.fit = TRUE)
-        y1_x0 <- predict(fit,
-                     newdata = x0_data,
-                     se.fit = TRUE)
-        
-        preds.fit <- y1_x1$fit - y1_x0$fit
-        se1 <- sqrt(mean(y1_x1$se.fit^2))
-        se0 <- sqrt(mean(y1_x0$se.fit^2))
-        se <- max(se1, se0)
-        
-        # X1 <- model.matrix(delete.response(terms(fit)), x1_data)
-        # X0 <- model.matrix(delete.response(terms(fit)), x0_data)
-        # d  <- colMeans(X1 - X0)
-        # est <- drop(d %*% coef(fit))
-        # se  <- sqrt(drop(t(d) %*% vcov(fit) %*% d))
-        
-    list(
-        y1_x0 = y1_x0,
-        y1_x1 = y1_x1,
-        mean = mean(preds.fit),
-        se   = se)})
-    
-    estimates <- map_dbl(estimate_per_set, "mean")
-    std_errors <- map_dbl(estimate_per_set, "se")
-    return(list(adjustment_set = adj_sets,
-                estimate = estimates,
-                std_error = std_errors))
-}
+``` {r}
 
 
 #' Estimate a causal contrast under every valid adjustment set
@@ -3559,7 +3527,6 @@ causal_estimate_over_all_adj_sets <- function(
 
 causal_estimate_over_all_adj_sets <- function(
     dag, data,
-    latent_nodes = NULL,
     exposure     = "S.Kn",
     outcome      = "Grade",
     x1_val       = 1,
@@ -3578,19 +3545,18 @@ causal_estimate_over_all_adj_sets <- function(
     type = type, max.results = max_sets
   )
 
-  if (!is.null(latent_nodes))
-    adj_sets <- purrr::keep(adj_sets, \(s) !any(s %in% latent_nodes))
-
   ## covariates must actually be measured, else lm() errors
   adj_sets <- purrr::keep(adj_sets, \(s) all(s %in% names(data)))
 
   if (length(adj_sets) == 0) {
     warning("no usable adjustment set for ", exposure, " -> ", outcome)
-    return(list(adjustment_set = adj_sets,
+    return(list(
+        DAG = dag,
+        adjustment_set = adj_sets,
                 estimate = numeric(0), std_error = numeric(0)))
   }
 
-  y        <- data[[outcome]]                 # was data[[1]]
+  y        <- data[[outcome]] 
   is_binom <- is.factor(y) || is.logical(y) ||
               (is.numeric(y) && all(y %in% c(0, 1), na.rm = TRUE))
   ex_lev   <- if (is.factor(data[[exposure]])) levels(data[[exposure]]) else NULL
@@ -3635,172 +3601,131 @@ causal_estimate_over_all_adj_sets <- function(
          se   = sqrt(drop(t(grad) %*% V %*% grad)))
   })
 
-  list(adjustment_set = adj_sets,
+  list(
+      DAG = dag,
+      adjustment_set = adj_sets,
        estimate       = purrr::map_dbl(estimate_per_set, "mean"),
        std_error      = purrr::map_dbl(estimate_per_set, "se"))
 }
-
-
-
-generate_node_group_causal_estimate_comparisons <- function(
-        Model = "M5",
-        Beta = 0.4, # strength of signal along paths
-        # might need to change for different models depending on present nodes
-        exposure = "S.Kn", outcome = "Grade",
-        use_potential_observable_proxies = TRUE,
-        x1_val = 1, x0_val = 0, # should be 1 and 0 for continuous
-        # for placiing proxy nodes
-        x_p_nudge = 0, y_p_nudge = -2
-) {
-    ground_truth_dag <- 
-        CDAGs[[Model]] |> 
-        tidygraph_to_dagitty()
-    obs_nds = CDAGs[[Model]]$observable 
-    proxy_nds = CDAGs[[Model]] |> 
-        activate(nodes) |> 
-        as_tibble() |> 
-        filter(measurability_node_group == "Potentially observable") |> 
-        pull(name)
-    
-    # Ground truth uses full simmed data
-    est <- partial(causal_estimate_over_all_adj_sets,
-                   exposure = exposure, outcome = outcome,
-                   x1_val = x1_val, x0_val = x0_val)
-    
-    if (use_potential_observable_proxies) {
-        bn_list <- bn_fit_simulations(
-            dag = ground_truth_dag, 
-            observable_nodes = obs_nds,
-            proxy_nodes = proxy_nds,
-            Beta = Beta)
-        obs_data <- bn_list$simdata.opo
-        learned_dag <- bn_list$bn.DAG.opo
-    } else {
-        bn_list <- bn_fit_simulations(
-            dag = ground_truth_dag, 
-            observable_nodes = obs_nds,
-            Beta = Beta)
-        obs_data <- bn_list$simdata.o
-        learned_dag <- bn_list$bn.DAG.o
-    }
-
-    ground_truth <- est(
-        dag = ground_truth_dag, 
-        data = bn_list$simdata)
-    
-    expert_dag <- est(
-        dag = ground_truth_dag, 
-        data = obs_data,
-        latent_nodes = setdiff(
-            names(ground_truth_dag),
-            names(obs_data)))
-    
-    learned_dag <- est(
-        dag = learned_dag, 
-        data = obs_data,
-        latent_nodes = setdiff(
-            names(learned_dag),
-            names(obs_data)))
-
-    estimates <- tibble(
-        Model = Model,
-        DAG = c(
-            "Ground Truth", 
-            "Expert DAG",
-            "Learned DAG") |> 
-            factor(levels = c(
-                "Ground Truth", 
-                "Expert DAG", 
-                "Learned DAG")),
-        exposure = exposure, 
-        outcome = outcome,
-        adjustment_sets = list(
-            ground_truth$adjustment_set,
-            expert_dag$adjustment_set,
-            learned_dag$adjustment_set
-        ),
-        estimate_mean = c(
-            mean(ground_truth$estimate),
-            mean(expert_dag$estimate),
-            mean(learned_dag$estimate)
-        ),
-        estimate_std_errors = c(
-            mean(ground_truth$std_error),
-            mean(expert_dag$std_error),
-            mean(learned_dag$std_error)
-        ),
-        estimate_sd = c(
-            sd(ground_truth$estimate),
-            sd(expert_dag$estimate),
-            sd(learned_dag$estimate)
-        )
-    )
-    message(str_c("Simulation complete for ", Model))
-    
-    return( # Monster list of everything we need
-        list(
-            Model = Model,
-            DAG = ground_truth_dag,
-            fitted_BN = bn_list,
-            estimates = estimates
-        )
-    )
-}
 ```
 
-### Model simulations with `dagitty` and `bnlearn`
+## Structure learning with hill climber
 
-```{r simulating-cluster-models}
-if (rerun_simulations) {
-    simulations_ng_cluster_models <- 
-        c("M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8") |> 
-        set_names() |> 
-        imap(
-            \(M, n)
-            generate_node_group_causal_estimate_comparisons(
-                Model = M,
-                Beta = sim_signal_strength[["typical"]]
-            )
-        )
-    saveRDS(simulations_ng_cluster_models, "cache/model_simulations.RDS")
-} else {
-    simulations_ng_cluster_models <- readRDS("cache/model_simulations.RDS")
-}
-
-```
-
-```{r all-CDAG-estimates}
-all_ng_estimates <-
+``` {r ground-truth-estimate}
+est_ground_truth <- 
+    model_name_list |> 
     map(
-        simulations_ng_cluster_models,
-        \(s)
-           s$estimates
+        \(M)
+        causal_estimate_over_all_adj_sets(
+            dag = tidygraph_to_dagitty(CDAGs[[M]]),
+            data = simmed.data[[M]]
+        )
+    )
+```
+
+``` {r expert-estimates}
+est_expert_observable <- 
+    model_name_list |> 
+    map(
+        \(M)
+        causal_estimate_over_all_adj_sets(
+            dag = tidygraph_to_dagitty(CDAGs[[M]]),
+            data = learned_bn_observable[[M]]$observed.data
+        )
+    )
+
+est_expert_potentially_observable <- 
+    model_name_list |> 
+    map(
+        \(M)
+        causal_estimate_over_all_adj_sets(
+            dag = tidygraph_to_dagitty(CDAGs[[M]]),
+            data = learned_bn_potentially_observable[[M]]$observed.data
+        )
+    )
+
+```
+
+``` {r hc-learned-estimates}
+est_observed <- 
+    model_name_list |> 
+    map(
+        \(M)
+        causal_estimate_over_all_adj_sets(
+            dag = learned_bn_observed[[M]]$learned.DAG,
+            data = learned_bn_observed[[M]]$observed.data
+        )
+    )
+
+est_observable <- 
+    model_name_list |> 
+    map(
+        \(M)
+        causal_estimate_over_all_adj_sets(
+            dag = learned_bn_observable[[M]]$learned.DAG,
+            data = learned_bn_observable[[M]]$observed.data
+        )
+    )
+
+est_potentially_observable <- 
+    model_name_list |> 
+    map(
+        \(M)
+        causal_estimate_over_all_adj_sets(
+            dag = learned_bn_potentially_observable[[M]]$learned.DAG,
+            data = learned_bn_potentially_observable[[M]]$observed.data
+        )
+    )
+
+```
+
+``` {r joining-non-PAG-estimates}
+
+sim_list_to_tibble <- function(sims, sim_name = "") {
+    sims |> 
+        map(
+            \(sim)
+            tibble(
+                method = sim_name,
+                GCM = list(sim$DAG),
+                adjustment_sets = list(sim$adjustment_set),
+                estimate = mean(sim$estimate),
+                se = mean(sim$std_error))
         ) |> 
-    list_rbind() |> 
-    group_by(Model) |> 
-    mutate(
-        gt_est_diff = estimate_mean - estimate_mean[DAG == "Ground Truth"] )|> 
-    ungroup() |> 
-    mutate(error = estimate_std_errors + replace_na(estimate_sd, 0)) |> 
-    select(Model, DAG, estimate_mean, error, gt_est_diff, everything())
+        list_rbind(names_to = "Model")    
+}
+
+sims_observable <- 
+    sim_list_to_tibble(est_ground_truth, "Ground truth") |> 
+    bind_rows(
+        sim_list_to_tibble(est_expert_observable, "Expert GCM")
+    ) |> 
+    bind_rows(
+        sim_list_to_tibble(est_observable, "Learned HC DAG")
+    ) |> 
+    mutate(data = "Observable")
+
+sims_potentially_observable <- 
+    sim_list_to_tibble(est_ground_truth, "Ground truth") |> 
+    bind_rows(
+        sim_list_to_tibble(est_expert_potentially_observable, "Expert GCM")
+    ) |> 
+    bind_rows(
+        sim_list_to_tibble(est_potentially_observable, "Learned HC DAG")
+    ) |> 
+    mutate(data = "Potentially observable")
+
+        
 ```
 
 
 
-
-
-
-
-
-
-### Structure learning using ICD
+## Structure learning using ICD
 
 
 ICD (Iterative Causal Discovery) learns a Partial Ancestry Graph (PAG), an equivalence class of Maximal Ancestry Graphs (MAGs),
 allowing for latent confounders and selection bias. This code is taken from https://github.com/IntelLabs/causality-lab/blob/main/notebooks/causal_discovery_with_latent_confounders.ipynb, with some AI translation into here. 
 It is implemented only in Intel Labs' `causality-lab` (Python), so this document runs it through `reticulate` and brings the learned graph back into R as an adjacency matrix.
-
-#### One-time environment setup
 
 Run this once in the console, not on every render.
 
@@ -3813,18 +3738,18 @@ virtualenv_create("icd", packages = c("numpy", "scipy"))
 virtualenv_install("icd", "git+https://github.com/IntelLabs/causality-lab.git")
 ```
 
-`causality-lab` is not on PyPI, so it installs from the repo. If `git+https`
-is blocked, download the zip and point pip at the unpacked folder instead:
 
 ```{r}
 #| label: install-fallback
 #| eval: false
+
+#`causality-lab` is not on PyPI, so it installs from the repo. If `git+https`
+#is blocked, download the zip and point pip at the unpacked folder instead:
+
 virtualenv_install("icd", "C:/path/to/causality-lab-main")
 ```
 
-#### Setup
-
-```{r}
+```{r launching-reticulate}
 #| label: setup
 library(reticulate)
 use_virtualenv("icd", required = TRUE)
@@ -3838,8 +3763,6 @@ from causal_discovery_utils.cond_indep_tests import CondIndepParCorr
 ```
 
 
-#### Data - batched
-
 `sim_list` is a **named** list of numeric matrices, names `M1`–`M8`. Rows are
 records, columns are variables. Models may have different numbers of columns —
 the node set is derived per matrix, so a shared vocabulary isn't required.
@@ -3847,22 +3770,29 @@ the node set is derived per matrix, so a shared vocabulary isn't required.
 ```{r}
 #| label: data
 
-sim_list <- simulations_ng_cluster_models |> 
-    map(
-        \(sim)
-        sim$fitted_BN$simdata.opo
-    )
+fetch_simdata_from_learned_bn <- function(bnlist) {
+    bnlist |> 
+        map(function(sim) {
+            m <- as.matrix(sim$observed.data)
+            storage.mode(m) <- "double"
+            return(m)
+        })
+}
 
-stopifnot(is.list(sim_list), !is.null(names(sim_list)))
+sim_list_obs <- 
+    learned_bn_observable |> 
+    fetch_simdata_from_learned_bn()
 
-sim_list <- lapply(sim_list, function(m) {
-  m <- as.matrix(m)
-  storage.mode(m) <- "double"
-  m
-})
+sim_list_pot_obs <- 
+    learned_bn_potentially_observable |> 
+    fetch_simdata_from_learned_bn()
 
 # keep column names on the R side; Python works in 0-based indices only
-var_names <- lapply(sim_list, function(m) {
+var_names_obs <- lapply(sim_list_obs, function(m) {
+  nm <- colnames(m)
+  if (is.null(nm)) paste0("V", seq_len(ncol(m))) else nm
+})
+var_names_pot_obs <- lapply(sim_list_pot_obs, function(m) {
   nm <- colnames(m)
   if (is.null(nm)) paste0("V", seq_len(ncol(m))) else nm
 })
@@ -3870,14 +3800,12 @@ var_names <- lapply(sim_list, function(m) {
 alpha <- 0.01
 
 data.frame(
-  model   = names(sim_list),
-  records = vapply(sim_list, nrow, integer(1)),
-  nodes   = vapply(sim_list, ncol, integer(1))
+  model   = names(sim_list_obs),
+  records = vapply(sim_list_obs, nrow, integer(1)),
+  nodes   = vapply(sim_list_obs, ncol, integer(1))
 )
 ```
 
-
-## Learn
 
 The loop runs inside Python so each matrix crosses the boundary once. A failure
 on one model is caught and recorded rather than aborting the render.
@@ -3926,39 +3854,60 @@ def learn_many(mats, alpha=0.01, run_fci=True):
                          "error": f"{type(e).__name__}: {e}"}
     return res
 
+results_obs = learn_many(r.sim_list_obs, alpha=r.alpha, run_fci=True)
+results_pot_obs = learn_many(r.sim_list_pot_obs, alpha=r.alpha, run_fci=True)
+
+
 ```
 
-```{python}
-#| label: py-run
-results = learn_many(r.sim_list, alpha=r.alpha, run_fci=True)
-```
-
-## Back into R
 
 ```{r}
 #| label: pull-back
-res <- py$results
-res <- res[names(sim_list)]   # dicts don't guarantee order; restore M1..M8
-
-failed <- vapply(res, function(x) !is.null(x$error), logical(1))
-if (any(failed)) {
-  message("failed: ", paste(names(res)[failed], collapse = ", "))
-  print(vapply(res[failed], function(x) x$error, character(1)))
+res_obs <- py$results_obs
+res_obs <- res_obs[names(sim_list_obs)]   # dicts don't guarantee order; restore M1..M8
+failed_obs <- vapply(res_obs, function(x) !is.null(x$error), logical(1))
+if (any(failed_obs)) {
+  message("failed: ", paste(names(res_obs)[failed_obs], collapse = ", "))
+  print(vapply(res_obs[failed_obs], function(x) x$error, character(1)))
 }
 
-adj_icd <- Map(function(x, nm) {
+res_pot_obs <- py$results_pot_obs
+res_pot_obs <- res_pot_obs[names(sim_list_pot_obs)]
+failed_pot_obs <- vapply(res_pot_obs, function(x) !is.null(x$error), logical(1))
+if (any(failed_pot_obs)) {
+  message("failed: ", paste(names(res_pot_obs)[failed_pot_obs], collapse = ", "))
+  print(vapply(res_pot_obs[failed_pot_obs], function(x) x$error, character(1)))
+}
+
+adj_icd_obs <- Map(function(x, nm) {
   if (is.null(x$adj_icd)) return(NULL)
   a <- x$adj_icd
   dimnames(a) <- list(nm, nm)
   a
-}, res, var_names)
+}, res_obs, var_names_obs)
 
-adj_fci <- Map(function(x, nm) {
+adj_fci_obs <- Map(function(x, nm) {
   if (is.null(x$adj_fci)) return(NULL)
   a <- x$adj_fci
   dimnames(a) <- list(nm, nm)
   a
-}, res, var_names)
+}, res_obs, var_names_obs)
+
+
+adj_icd_pot_obs <- Map(function(x, nm) {
+  if (is.null(x$adj_icd)) return(NULL)
+  a <- x$adj_icd
+  dimnames(a) <- list(nm, nm)
+  a
+}, res_pot_obs, var_names_pot_obs)
+
+adj_fci_obs <- Map(function(x, nm) {
+  if (is.null(x$adj_fci)) return(NULL)
+  a <- x$adj_fci
+  dimnames(a) <- list(nm, nm)
+  a
+}, res_pot_obs, var_names_pot_obs)
+
 ```
 
 ```{r}
@@ -3993,64 +3942,17 @@ pag_edges <- function(adj, nodes = colnames(adj)) {
   res
 }
 
-edges_icd <- lapply(adj_icd[!vapply(adj_icd, is.null, logical(1))], pag_edges)
+edges_icd_obs <- lapply(adj_icd_obs[!vapply(adj_icd_obs, is.null, logical(1))], pag_edges)
+edges_icd_pot_obs <- lapply(adj_icd_pot_obs[!vapply(adj_icd_pot_obs, is.null, logical(1))], pag_edges)
 
-# one long frame across models, if that suits the downstream comparison better
-edges_all <- do.call(rbind, Map(function(e, nm) {
-  if (nrow(e) == 0) return(NULL)
-  cbind(model = nm, e)
-}, edges_icd, names(edges_icd)))
-rownames(edges_all) <- NULL
-
-head(edges_all, 20)
 ```
 
-## Summary across models
 
-```{r}
-#| label: summary
-edge_summary <- function(e) {
-  types <- c("o-o", "o->", "<-o", "-->", "<--", "<->", "---")
-  counts <- table(factor(e$edge, levels = types))
-  c(n_edges = nrow(e), counts)
-}
-
-summ <- t(vapply(edges_icd, edge_summary, numeric(8)))
-summ <- as.data.frame(summ)
-summ$total_tests <- vapply(res[rownames(summ)],
-                           function(x) sum(unlist(x$tests_icd)), numeric(1))
-summ
-```
-
-Note `<-o` and `<--` are the same edge types as `o->` and `-->` with the
-endpoints swapped; they appear separately here only because `pag_edges()` fixes
-the column order by node index rather than by orientation.
-
-## CI tests per conditioning set size
-
-`test_counter` runs to the largest conditioning set reached, which differs by
-model, so pad before binding.
-
-```{r}
-#| label: test-counts
-pad <- function(x, n) c(x, rep(0, n - length(x)))
-
-tests_icd <- lapply(res, function(x) unlist(x$tests_icd))
-tests_icd <- tests_icd[!vapply(tests_icd, is.null, logical(1))]
-maxlen <- max(vapply(tests_icd, length, integer(1)))
-
-tests_mat <- t(vapply(tests_icd, pad, numeric(maxlen), n = maxlen))
-colnames(tests_mat) <- seq_len(maxlen) - 1L
-tests_mat
-
-matplot(seq_len(maxlen) - 1L, t(tests_mat), type = "b", pch = 1, lty = 1,
-        xlab = "conditioning set size", ylab = "number of CI tests")
-legend("topright", rownames(tests_mat), col = seq_len(nrow(tests_mat)),
-       lty = 1, bty = "n", cex = 0.8)
-```
 
 ``` {r}
-pag_to_dagitty <- function(e) {
+pag_to_dagitty <- function(e, boldy = FALSE) {
+    # "boldly" treats @-> as ->, taking a guess
+    # that this is the correct edge
   f <- function(a, b, mf, mt) {
     switch(paste0(mf, mt),
       "oo" = sprintf("%s @-@ %s", a, b),
@@ -4065,57 +3967,177 @@ pag_to_dagitty <- function(e) {
       stop("unhandled edge: ", mf, mt)
     )
   }
-  stmts <- mapply(f, e$from, e$to, e$mark_from, e$mark_to, USE.NAMES = FALSE)
+  g <- function(a, b, mf, mt) {
+    switch(paste0(mf, mt),
+      "oo" = sprintf("%s @-@ %s", a, b),
+      "o>" = sprintf("%s -> %s", a, b),
+      "->" = sprintf("%s -> %s",  a, b),
+      "<o" = sprintf("%s -> %s", b, a),   # flip so the circle leads
+      "<-" = sprintf("%s -> %s",  b, a),
+      "<>" = sprintf("%s <-> %s", a, b),
+      "o-" = sprintf("%s @-- %s", a, b),
+      "-o" = sprintf("%s @-- %s", b, a),
+      "--" = sprintf("%s -- %s",  a, b),
+      stop("unhandled edge: ", mf, mt)
+    )
+  }
+  if (boldy) {
+      stmts <- mapply(g, e$from, e$to, e$mark_from, e$mark_to, USE.NAMES = FALSE)
+  } else {
+      stmts <- mapply(f, e$from, e$to, e$mark_from, e$mark_to, USE.NAMES = FALSE)
+  }
   paste0("pag { ", paste(stmts, collapse = "; "), " }") |> 
       dagitty()
 }
 
-icd_PAGs <- 
-    edges_icd |> 
+icd_PAGs_obs <- 
+    edges_icd_obs |> 
     map(pag_to_dagitty)
+
+icd_PAGs_pot_obs <- 
+    edges_icd_pot_obs |> 
+    map(pag_to_dagitty)
+
+bold_icd_PAGs_obs <- 
+    edges_icd_obs |> 
+    map(\(x) pag_to_dagitty(x, boldy = TRUE))
+
+bold_icd_PAGs_pot_obs <- 
+    edges_icd_pot_obs |> 
+    map(\(x) pag_to_dagitty(x, boldy = TRUE))
 
 ```
 
 Using the ICD PAGs to run simulations
 
 ``` {r}
-sim_from_pag <- function(Model = "M6") {
+sim_from_pag <- 
+    function(Model = "M6", dag_list, data_list) {
     causal_estimate_over_all_adj_sets(
-        dag = icd_PAGs[[Model]], 
-        data = simulations_ng_cluster_models[[Model]]$fitted_BN$simdata.opo
+        dag = dag_list[[Model]], 
+        data = data_list[[Model]]$observed.data
         ) 
 }
 
-simulations_ng_PAGs <- 
-    str_c("M",1:8) |> 
-    set_names() |> 
-    map(sim_from_pag)
+sim_from_pag_pot_obs <- 
+    function(Model = "M6") {
+    causal_estimate_over_all_adj_sets(
+        dag = icd_PAGs_pot_obs[[Model]], 
+        data = learned_bn_potentially_observable[[Model]]$observed.data
+        ) 
+}
 
-PAG_ng_estimates <-
+simulations_ng_PAGs_obs <- 
+    model_name_list |> 
     map(
-        simulations_ng_PAGs,
+        \(M) 
+        sim_from_pag(
+            M, 
+            dag_list = icd_PAGs_obs,
+            data_list = learned_bn_observable))
+
+simulations_ng_PAGs_pot_obs <- 
+    model_name_list |> 
+    map(
+        \(M) 
+        sim_from_pag(
+            M, 
+            dag_list = icd_PAGs_pot_obs,
+            data_list = learned_bn_potentially_observable))
+
+simulations_ng_bold_PAGs_obs <- 
+    model_name_list |> 
+    map(
+        \(M) 
+        sim_from_pag(
+            M, 
+            dag_list = bold_icd_PAGs_obs,
+            data_list = learned_bn_observable))
+
+simulations_ng_bold_PAGs_pot_obs <- 
+    model_name_list |> 
+    map(
+        \(M) 
+        sim_from_pag(
+            M, 
+            dag_list = bold_icd_PAGs_pot_obs,
+            data_list = learned_bn_potentially_observable))
+
+
+
+ICD_PAG_est_obs <-
+    map(
+        simulations_ng_PAGs_obs,
         \(s)
            tibble(
-               DAG = "Learned PAG",
-               exposure = "S.Kn",
-               outcome = "Grade",
+               method = "Learned ICD PAG",
+               data = "Observable",
+               GCM = list(s$DAG),
                adjustment_sets = list(s$adjustment_set),
-               estimate_mean = mean(s$estimate),
-               error = mean(s$std_error)
+               estimate = mean(s$estimate),
+               se = mean(s$std_error)
            )
         ) |> 
     list_rbind(names_to = "Model") 
 
+ICD_PAG_est_pot_obs <-
+    map(
+        simulations_ng_PAGs_pot_obs,
+        \(s)
+           tibble(
+               method = "Learned ICD PAG",
+               data = "Potentially observable",
+               GCM = list(s$DAG),
+               adjustment_sets = list(s$adjustment_set),
+               estimate = mean(s$estimate),
+               se = mean(s$std_error)
+           )
+        ) |> 
+    list_rbind(names_to = "Model") 
 
-all_simulation_estimates <- 
-    bind_rows(all_ng_estimates, PAG_ng_estimates) 
+bold_ICD_PAG_est_obs <-
+    map(
+        simulations_ng_bold_PAGs_obs,
+        \(s)
+           tibble(
+               method = "Overconfident ICD PAG",
+               data = "Observable",
+               GCM = list(s$DAG),
+               adjustment_sets = list(s$adjustment_set),
+               estimate = mean(s$estimate),
+               se = mean(s$std_error)
+           )
+        ) |> 
+    list_rbind(names_to = "Model") 
 
+bold_ICD_PAG_est_pot_obs <-
+    map(
+        simulations_ng_bold_PAGs_pot_obs,
+        \(s)
+           tibble(
+               method = "Overconfident ICD PAG",
+               data = "Potentially observable",
+               GCM = list(s$DAG),
+               adjustment_sets = list(s$adjustment_set),
+               estimate = mean(s$estimate),
+               se = mean(s$std_error)
+           )
+        ) |> 
+    list_rbind(names_to = "Model") 
 ```
 
+``` {r}
+# Dropping bold ones, didn't add much
+all_simulation_estimates <- 
+    list_rbind(list(
+        sims_observable,
+        sims_potentially_observable,
+        ICD_PAG_est_obs,
+        ICD_PAG_est_pot_obs
+    )) |> 
+    mutate(GCM = list_flatten(GCM))
 
-
-
-
+```
 
 
 
@@ -4136,55 +4158,52 @@ data.
 dodge_amt <- 0.1
 
 ground_truth_estimate_mean_estimate <- 
-    all_ng_estimates |> 
-    filter(DAG == "Ground Truth") |> 
-    filter(!is.nan(estimate_mean)) |> 
-    pull(estimate_mean) |> 
-    mean()
+    all_simulation_estimates |> 
+    filter(method == "Ground truth") |> 
+    filter(!is.nan(estimate)) |> 
+    pull(estimate) |> 
+    mean(na.rm = T)
 
 ground_truth_error_estimate <- 
-    ( # the largest base error
-        all_ng_estimates |> 
-    filter(DAG == "Ground Truth") |> 
-    filter(!is.nan(error)) |> 
-    pull(error) |> 
-    max())
+    all_simulation_estimates |> 
+    filter(method == "Ground truth") |> 
+    filter(!is.nan(se)) |> 
+    pull(se) |> 
+    max(na.rm = T)
 
 
 est_to_plot <- 
     all_simulation_estimates |>
-    mutate(estimated_ground_truth = is.nan(estimate_mean)) |> 
+    mutate(estimated_ground_truth = is.nan(estimate) & method == "Ground truth") |> 
     mutate(
-        estimate_mean = if_else(is.nan(estimate_mean) & DAG == "Ground Truth",
-                                ground_truth_estimate_mean_estimate,
-                                estimate_mean),
-        error = if_else(is.nan(error) & DAG == "Ground Truth",
-                                ground_truth_error_estimate,
-                                error)
+        estimate = if_else(estimated_ground_truth,
+                           ground_truth_estimate_mean_estimate,
+                           estimate),
+        se = if_else(estimated_ground_truth,
+                     ground_truth_error_estimate,
+                     se)
     ) |> 
-    group_by(Model) |> 
+    group_by(Model, data) |> 
     mutate(
-        gt_est_diff = if_else(
-            is.nan(gt_est_diff) | is.na(gt_est_diff),
-            estimate_mean - estimate_mean[DAG == "Ground Truth"],
-            gt_est_diff
-        )
-    ) |> 
-    ungroup() |> 
-    mutate(ogDAG = DAG) |> 
-    mutate(DAG = if_else(estimated_ground_truth & DAG == "Ground Truth",
-                         "Ground Truth (est)",
-                         DAG) |> 
-               factor(levels = c(
-                   "Ground Truth",
-                   "Ground Truth (est)",
-                   "Expert DAG",
-                   "Learned DAG",
-                   "Learned PAG"
-               )))
+        gt_est_diff = 
+            estimate - estimate[method == "Ground truth"]) |> 
+    ungroup() 
+
+    # 
+    # mutate(ogDAG = DAG) |> 
+    # mutate(DAG = if_else(estimated_ground_truth & DAG == "Ground Truth",
+    #                      "Ground Truth (est)",
+    #                      DAG) |> 
+    #            factor(levels = c(
+    #                "Ground Truth",
+    #                "Ground Truth (est)",
+    #                "Expert DAG",
+    #                "Learned DAG",
+    #                "Learned PAG"
+    #            )))
     
 pal_cols <- palette.colors()
-pal_cols <- c(pal_cols[1], "#777777", pal_cols[2], pal_cols[3], pal_cols[4])
+
 ```
 
 ```{r plotting-individual-simulation-results}
@@ -4192,31 +4211,23 @@ pal_cols <- c(pal_cols[1], "#777777", pal_cols[2], pal_cols[3], pal_cols[4])
 # models into those identifiable and those not
 # Maybe change this to abs effect?
 est_to_plot |> 
-    filter(DAG != "Potentially Observable") |> 
-    mutate(DAG = if_else(DAG == "Observable", "Learned DAG", 
-                         DAG) |> 
+    filter(!estimated_ground_truth) |>
+    mutate(method = method |>
                factor(levels = c(
-                   "Ground Truth",
-                   "Ground Truth (est)",
-                   "Expert DAG",
-                   "Learned DAG",
-                   "Learned PAG"
-               ))) |> 
+                   "Ground truth",
+                   "Expert GCM",
+                   "Learned HC DAG",
+                   "Learned ICD PAG"
+               ))) |>
     mutate(
         y_pos = as.numeric(factor(Model)) + 
-            (as.numeric(factor(ogDAG)) - mean(as.numeric(factor(ogDAG)))) * dodge_amt
+            (as.numeric(factor(method)) - mean(as.numeric(factor(method)))) * dodge_amt
     ) |> 
-    ggplot(aes(color = DAG, y = y_pos)) + 
-    # geom_pointinterval(
-    #     aes(x = gt_est_diff, 
-    #         xmin = gt_est_diff - 2 * error, 
-    #         xmax = gt_est_diff + 2 * error),
-    #        alpha = 0.3, size = 1
-    # ) +
+    ggplot(aes(color = method, y = y_pos)) + 
     geom_pointinterval(
-        aes(x = estimate_mean,
-            xmin = estimate_mean - 1 *error,
-            xmax = estimate_mean + 1 *error),
+        aes(x = estimate,
+            xmin = estimate - 1 * se,
+            xmax = estimate + 1 * se),
            alpha = 0.8, size = 3
     ) +
     scale_y_continuous(
@@ -4224,28 +4235,38 @@ est_to_plot |>
         labels = levels(factor(est_to_plot$Model)),
         name = "Model"
     ) +
-    annotate("label", x = -0.0, y = c(2.2,3.2,5.2,6.2,8.2), label = "?",
-             color = pal_cols[3], alpha = 0.4) +
+    annotate("label", x = 0.17, y = c(2.2,3.2,5.2,6.2,8.2), label = "?",
+             color = pal_cols[2], alpha = 0.4) +
     scale_colour_discrete(palette = pal_cols) +
     xlab("Estimate") +
-    theme_minimal()
+    theme_minimal() +
+    facet_wrap(~data) +
+    theme(legend.position = "bottom")
 ```
 
 ```{r plotting-simulation-results-split-by-idXY}
 est_to_plot_grouped <- 
     est_to_plot |> 
-    group_by(Model) |> 
+    filter(data == "Observable") |> 
+        mutate(method = method |>
+               factor(levels = c(
+                   "Ground truth",
+                   "Expert GCM",
+                   "Learned HC DAG",
+                   "Learned ICD PAG"
+               ))) |>
+    group_by(Model, data) |> 
     mutate(model_group = case_when(
-        any(DAG == "Ground Truth (est)") ~ "Unknowable models:\n",
-        is.nan(estimate_mean[DAG == "Expert DAG"]) ~ "Non-identifiable models\n(from potentially\nobservable data):\n", 
-        TRUE ~ "Identifiable models\n(from potentially\nobservable data):\n"
+        any(estimated_ground_truth) ~ "Unknowable models:\n",
+        is.nan(estimate[method == "Expert GCM"]) ~ "Non-identifiable models:\n", 
+        TRUE ~ "Identifiable models:\n"
         )) |> 
     ungroup() |> 
-    filter(DAG %in% c(
-        "Learned DAG",
-        "Learned PAG",
-        "Ground Truth",
-        "Expert DAG")) |>
+    # filter(DAG %in% c(
+    #     "Learned DAG",
+    #     "Learned PAG",
+    #     "Ground Truth",
+    #     "Expert DAG")) |>
     group_by(model_group) |> 
     mutate(model_group_list = str_c(
         unique(model_group), 
@@ -4253,16 +4274,17 @@ est_to_plot_grouped <-
     ungroup() |> 
     mutate(
         y_pos = as.numeric(factor(model_group_list)) + 
-            (as.numeric(factor(ogDAG)) - mean(as.numeric(factor(ogDAG)))) * dodge_amt
+            (as.numeric(factor(method)) - mean(as.numeric(factor(method)))) * dodge_amt
     )
 
 p.est.sims <- 
     est_to_plot_grouped |> 
-    ggplot(aes(color = DAG, y = y_pos)) + 
+    filter(!estimated_ground_truth) |> 
+    ggplot(aes(color = method, y = y_pos)) + 
     geom_pointinterval(
         aes(x = gt_est_diff,
-            xmin = gt_est_diff - 1 *error,
-            xmax = gt_est_diff + 1 *error),
+            xmin = gt_est_diff - 1 * se,
+            xmax = gt_est_diff + 1 * se),
            alpha = 0.6, size = 5
     ) +
     scale_y_continuous(
@@ -4270,28 +4292,35 @@ p.est.sims <-
         labels = levels(factor(est_to_plot_grouped$model_group_list)),
         name = "Model estimates"
     ) +
-    annotate("label", x = -0.0, y = c(1.8), label = "?",
-             color = pal_cols[3], alpha = 0.4) +
-    annotate("label", x = -0.0, y = c(2.8), label = "?",
-             color = pal_cols[3], alpha = 0.4) +
-    annotate("label", x = -0.0, y = c(3), label = "?",
+    # annotate("label", x = -0.05, y = c(2), label = "?",
+    #          color = pal_cols[2], alpha = 0.4) +
+    # annotate("label", x = -0.025, y = c(3), label = "?",
+    #          color = pal_cols[2], alpha = 0.4) +
+    annotate("label", x = 0.0, y = c(3), label = "?",
              color = "grey20", alpha = 0.4) +
-    scale_colour_discrete(palette = palette.colors()) +
+    scale_colour_discrete(
+        name = "GCM",
+        palette = palette.colors()) +
     xlab("Deviation from ground truth estimate (SD)") +
     theme_minimal() +
-    theme(legend.position = "bottom")
+    theme(legend.position = "bottom") +
+    facet_wrap(~data)
 
 p.est.sims
+```
 
+``` {r simplot-no-unkowable}
 
 p.est.sims.2 <- 
     est_to_plot_grouped |>
+    filter(data == "Observable") |> 
+    filter(!estimated_ground_truth) |> 
     filter(!str_detect(model_group_list, "Unk")) |> 
-    ggplot(aes(color = DAG, y = y_pos)) + 
+    ggplot(aes(color = method, y = y_pos)) + 
     geom_pointinterval(
         aes(x = gt_est_diff,
-            xmin = gt_est_diff - 1 *error,
-            xmax = gt_est_diff + 1 *error),
+            xmin = gt_est_diff - 1 * se,
+            xmax = gt_est_diff + 1 * se),
            alpha = 0.6, size = 5
     ) +
     scale_y_continuous(
@@ -4299,16 +4328,57 @@ p.est.sims.2 <-
         labels = levels(factor(est_to_plot_grouped$model_group_list)),
         name = "Model estimates"
     ) +
-    annotate("label", x = -0.0, y = c(1.85), label = "?",
-             color = pal_cols[3], alpha = 0.4) +
+    annotate("label", x = -0.0, y = c(1.95), label = "?",
+             color = pal_cols[2], alpha = 0.4) +
+    annotate("label", x = 0.0, y = c(2.15), label = "?",
+             color = pal_cols[4], alpha = 0.4) +
+    annotate("label", x = 0.0, y = c(1.15), label = "?",
+             color = pal_cols[4], alpha = 0.4) +
+    scale_colour_discrete(
+        name = "GCM",
+        palette = palette.colors()) +
+    xlab("Deviation from ground truth estimate (SD)") +
+    theme_minimal() +
+    theme(legend.position = "right") +
+    guides(colour = guide_legend(reverse = TRUE))
+
+p.est.sims.2
+
+
+ggsave("figures/FIG--simulation-results.png", p.est.sims.2,
+       width = 10, height = 3)
+```
+
+
+``` {r sim-plot-no-PAG}
+p.est.sims.3 <- 
+    est_to_plot_grouped |>
+    filter(data == "Observable") |> 
+    filter(!estimated_ground_truth) |> 
+    filter(method != "Learned ICD PAG") |> 
+    filter(!str_detect(model_group_list, "Unk")) |> 
+    ggplot(aes(color = method, y = y_pos)) + 
+    geom_pointinterval(
+        aes(x = gt_est_diff,
+            xmin = gt_est_diff - 1 * se,
+            xmax = gt_est_diff + 1 * se),
+           alpha = 0.6, size = 5
+    ) +
+    scale_y_continuous(
+        breaks = seq_along(levels(factor(est_to_plot_grouped$model_group_list))),
+        labels = levels(factor(est_to_plot_grouped$model_group_list)),
+        name = "Model estimates"
+    ) +
+    annotate("label", x = -0.0, y = c(1.95), label = "?",
+             color = pal_cols[2], alpha = 0.4) +
     scale_colour_discrete(palette = palette.colors()) +
     xlab("Deviation from ground truth estimate (SD)") +
     theme_minimal() +
     theme(legend.position = "bottom")
 
-p.est.sims.2
+p.est.sims.3
 
-ggsave("figures/FIG--simulation-results.png", p.est.sims.2,
+ggsave("figures/FIG--simulation-results-no-PAG.png", p.est.sims.3,
        width = 10, height = 3)
 
 ```
@@ -4349,69 +4419,111 @@ plot_bnlearn_coarse_comparison <- function(s_estimates) {
     
 }
 
-pcomp_m1 <-  plot_bnlearn_coarse_comparison(s_estimates = simulations_ng_cluster_models$M1)
-pcomp_m1$p_orig / pcomp_m1$p_o +
-    ggtitle("Model 1: Actual coarsened DAG (top)
-            vs coarsened learned DAG from observable nodes")
 
-pcomp_m2 <-  plot_bnlearn_coarse_comparison(s_estimates = simulations_ng_cluster_models$M2)
-pcomp_m2$p_orig / pcomp_m2$p_o +
-    ggtitle("Model 2: Actual coarsened DAG (top)
-            vs coarsened learned DAG from observable nodes")
+plot_learned_dag_comparisons <- function(M = "M4",
+                                         DATA = "Observable",
+                                         ls = 5) {
+    models <- 
+        all_simulation_estimates |> 
+        filter(Model == M, data == DATA,
+               method != "Ground truth") |> 
+        select(method, GCM)
+    
+    .fetch_and_add_node_info <- function(g) {
+        g |> 
+            chuck("GCM", 1) |> 
+            dagitty_to_tidygraph() |> 
+            activate(nodes) |> 
+            tidygraph::left_join(
+                merged_coarse_layout |> 
+                    select(name, x, y), by = "name") |> 
+            tidygraph::left_join(
+                node_group_nice_name |> 
+                    rename(name = node_group), by = "name") |> 
+            mutate(name = nice_name)
+    }
+    
+    g_expert_GCM <- models |> 
+        filter(method == "Expert GCM") |> 
+        .fetch_and_add_node_info()
+        
+    
+    g_HC_DAG <- models |> 
+        filter(method == "Learned HC DAG") |> 
+        .fetch_and_add_node_info()
+    
+    g_ICD_PAG <- models |> 
+        filter(method == "Learned ICD PAG") |> 
+        .fetch_and_add_node_info()
+    
+    obs_node <- gcm_nodelist(g_HC_DAG, as_tibble = FALSE)
+    g_proj_expert_GCM <- gcm_projection(g_expert_GCM, keep_nodes = obs_node)
+    
+    return(list(
+        Expert_GCM = gcm_qplot(g_expert_GCM, label_size = ls),
+        Expert_proj_GCM = gcm_qplot(g_proj_expert_GCM, label_size = ls),
+        HC_DAG = gcm_qplot(g_HC_DAG, label_size = ls),
+        ICD_PAG = gcm_qplot(g_ICD_PAG, label_size = ls)
+    ))
+}
 
-pcomp_m3 <-  plot_bnlearn_coarse_comparison(s_estimates = simulations_ng_cluster_models$M3)
-pcomp_m3$p_orig / pcomp_m3$p_o + 
-    ggtitle("Model 3: Actual coarsened DAG (top)
-            vs coarsened learned DAG from observable nodes")
 
-pcomp_m4 <-  plot_bnlearn_coarse_comparison(s_estimates = simulations_ng_cluster_models$M4)
-pcomp_m4$p_orig / pcomp_m4$p_o + 
-ggtitle("Model 4: Actual coarsened DAG (top)
-            vs coarsened learned DAG from observable nodes")
-
-pcomp_m5 <-  plot_bnlearn_coarse_comparison(
-    s_estimates = simulations_ng_cluster_models$M5)
-pcomp_m5$p_orig / pcomp_m5$p_o + 
-    ggtitle("Model 5: Actual coarsened DAG (top)
-            vs coarsened learned DAG from observable nodes")
-
-pcomp_m6 <-  plot_bnlearn_coarse_comparison(
-    s_estimates = simulations_ng_cluster_models$M6)
-pcomp_m6$p_orig / pcomp_m6$p_o + 
-ggtitle("Model 6: Actual coarsened DAG (top)
-            vs coarsened learned DAG from observable nodes")
-
-pcomp_m7 <-  plot_bnlearn_coarse_comparison(
-    s_estimates = simulations_ng_cluster_models$M7)
-pcomp_m7$p_orig / pcomp_m7$p_o + 
-    ggtitle("Model 7: Actual coarsened DAG (top)
-            vs coarsened learned DAG from observable nodes")
-
-pcomp_m8 <-  plot_bnlearn_coarse_comparison(
-    s_estimates = simulations_ng_cluster_models$M8)
-pcomp_m8$p_orig / pcomp_m8$p_o + 
-    ggtitle("Model 8: Actual coarsened DAG (top)
-            vs coarsened learned DAG from observable nodes")
 
 ```
+
+## Visualising learning of M4
+
+``` {r}
+pM4 <- plot_learned_dag_comparisons("M4", ls = 3)
+pM4obs <- plot_learned_dag_comparisons("M4", DATA = "Observable", ls = 3)
+pM4$Expert_GCM +
+    scale_x_continuous(expand = c(0.2, 0.2))
+```
+
+``` {r}
+pM4obs$Expert_proj_GCM +
+    scale_x_continuous(expand = c(0.1, 0.1))
+
+ggsave("figures/FIG--M4obs-latent-projection.png", pM4obs$Expert_proj_GCM +
+    scale_x_continuous(expand = c(0.1, 0.1)),
+       width = 5, height = 5)
+```
+
+``` {r}
+pM4obs$ICD_PAG +
+    scale_x_continuous(expand = c(0.1, 0.1))
+
+ggsave("figures/FIG--M4obs-ICD-PAG.png", 
+       pM4obs$ICD_PAG +
+    scale_x_continuous(expand = c(0.1, 0.1)),
+       width = 5, height = 5)
+```
+
+``` {r}
+pM4obs$HC_DAG +
+    scale_x_continuous(expand = c(0.1, 0.1))
+
+ggsave("figures/FIG--M4obs-HC-DAG.png", pM4obs$HC_DAG +
+    scale_x_continuous(expand = c(0.1, 0.1)),
+       width = 5, height = 5)
+```
+
 
 # Dissimilarity between all models
 
 ```{r combining-all-expert-and-learned-CDAGs}
-learned_CDAGs <- 
-    simulations_ng_cluster_models |> 
-    set_names(nm = str_replace(names(simulations_ng_cluster_models), "M", "D")) |> 
-    imap(
-        \(est,m)
-        est$fitted_BN$bn.opo |> 
-            bn_to_dagitty() |> 
-            dagitty_to_tidygraph() |> 
-            activate(nodes) |> 
-            mutate(name = str_remove(name, "_p$"))
-    )
-
+hcDAGs <- 
+    str_c("D", 1:8) |> 
+    set_names() |> 
+    map(
+        function(D){
+         M <- str_replace(D, "D", "M")
+         learned_bn_observable[[M]]$learned.DAG |> 
+             dagitty_to_tidygraph()
+        })
+    
 all_CDAGs <- 
-    c(CDAGs, learned_CDAGs)
+    c(CDAGs, hcDAGs)
 ```
 
 ```{r L0-between-all-CDAGs}

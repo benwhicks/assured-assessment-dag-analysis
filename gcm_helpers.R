@@ -252,6 +252,7 @@ gcm_split_types <- function(g, sep = ";") {
 
 gcm_qplot <- function(g,
                       layout          = "sugiyama",
+                      layout_df = NULL, # contains name, x, y
                       node_size       = 6,
                       label_size      = 3,
                       arrow_mm        = 2.5,
@@ -263,7 +264,7 @@ gcm_qplot <- function(g,
                       flat_alpha      = 0.9,
                       title           = NULL) {
     
-    g <- tidygraph::as_tbl_graph(g)
+    if (inherits(g, "dagitty")) g <- dagitty_to_tidygraph(g)
     node_df <- tibble::as_tibble(g, active = "nodes")
     
     if (!"name" %in% names(node_df)) {
@@ -329,6 +330,13 @@ gcm_qplot <- function(g,
         warning("collapsed `type` values found - run gcm_split_types() first")
     
     ## ---- layout --------------------------------------------------------------
+    
+    if (!is.null(layout_df)) {
+        node_df <- node_df |> 
+            left_join(layout_df |> distinct(name, x, y),
+                      by = "name")
+    }
+    
     lay <- if (all(c("x", "y") %in% names(node_df))) {
         ggraph::create_layout(g, layout = "manual", x = node_df$x, y = node_df$y)
     } else {
@@ -456,6 +464,10 @@ gcm_projection <- function(
     if (inherits(g, "dagitty")) g <- dagitty_to_tidygraph(g)
     ig <- igraph::as.igraph(g)
     
+    nodes_meta_df <- g |> 
+        activate(nodes) |> 
+        as_tibble()
+    
     all_nodes <- igraph::V(g)$name
     
     if (is.null(keep_nodes)) {
@@ -508,7 +520,8 @@ gcm_projection <- function(
         list_rbind()
     
     edges <- unique(rbind(dir_edges, bi_edges))
-    nodes <- data.frame(name = observed, stringsAsFactors = FALSE)
+    nodes <- data.frame(name = observed, stringsAsFactors = FALSE) |> 
+        left_join(nodes_meta_df, by = "name")
     
     if (is.null(edges) || nrow(edges) == 0) {
         return(tidygraph::tbl_graph(nodes = nodes, directed = TRUE))
