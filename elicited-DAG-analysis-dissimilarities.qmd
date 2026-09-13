@@ -13,33 +13,12 @@ editor:
     wrap: 72
 ---
 
-# Overview
-
-### Render settings
-
 ```{r rendering-preferences}
 # Set to true if L metrics
 recalculate_distance_matrices <- FALSE
 rerun_simulations <- FALSE
 export_and_save_every_model <- FALSE
 ```
-
-# TODO
-
-## Considering adding to L1, L2 diss:
-
-- Might already be there, but Independence / Dependence for L1
-- Similarly, X->Y or not (perhaps as pa() style instead, so squiggle arrow) for L2.
-
-## Check new definitions throughout:
-
-
-## Change L2 cluster degradation to use optimal adjustment set as well
-
-- Also, generally check the coarsening degradation aligns well enough
-  with the consistency
-
-## Vignette on causal degradation?
 
 ```{r}
 #| include: false
@@ -77,82 +56,6 @@ source("gcm_helpers.R")
 source("dagitty_tidygraph_translators.R")
 ```
 
-# Notation
-
-We will use curvy uppercase ($\mathcal{M,G,V,E}$) script for sets across
-all the models, $\mathbf{BOLD}$ uppercase for sets, and $U,P,P,E,R$ case
-standard for instances in the models. Lowercase like $v$ will be
-reserved for imagining actual values (so a node taking on a particular
-value).
-
-The models are indexed as $\mathcal{M}=\{M_1,M_2,\dots,M_8 \}$ with
-their corresponding graphical form as
-$\mathcal{G}=\{G_1,G_2,\dots,G_8 \}$, and each graphical model $G_k$
-comprises of a set of vertices $\mathbf{V}_{k}$ and edges
-$\mathbf{E}_{k}$, so $G_k=\langle\mathbf{V}_{k}, \mathbf{E}_{k}\rangle$,
-with the set of all nodes being $\mathcal{V}$ edges being $\mathcal{E}$.
-$E_{ij}=V_i \rightarrow V_j$ indicates an edge between two nodes, and we
-may use $X=V_i,Y=V_j,Z_k \in \mathbf{V}$ to streamline notation when
-subscripts are getting messy. If two nodes are connected through a
-mediated path, such as $V_i \rightarrow \dots \rightarrow V_j$ then we
-write $\mathrm{De}_{ij}=V_i \rightsquigarrow V_j$ or
-$V_i \in \mathrm{an}(V_j)$. To specify model context for ancestors,
-descendants and mediated parts we subscript the model:
-$V_i \in \mathrm{an}_{G_k}(V_j)$ or $V_i \rightsquigarrow _{G_k} V_j$.
-Nodes $V_i$ are indexed over all models (so across $\mathcal{V}$), but
-if we want to talk about $V_i$ as it stands in $G_k$ we would use
-$V_{i:G_k}$, and likewise for an edge $E_{ij:G_k}$ residing in the
-context of model $G_k$.
-
-Alternate notation for parents: $\{\mathrm{pa}_X \}$
-
-To describe some of the features of DAGs we will examine the set of
-independence relationships in the models as well.
-
-We will also be applying coarsening functions to create cluster DAGs. A
-typical coarsening functions $\varphi$ is applied to the graph, and
-within it all the nodes and edges. So
-$\varphi (G_{k})=\varphi G_{k}=\langle\varphi\mathbf{V}_{k},\varphi\mathbf{E}_{k}\rangle=\langle[\mathbf{V}_k]_{\varphi},[\mathbf{E_k}]_{\varphi}\rangle$,
-which will also refer to as a new cluster model
-$G^C_{k}=\varphi G_k=\langle\mathbf{V}^{C}_{k},\mathbf{E}^{C}_{k}\rangle$
-for slightly cleaner notation, and including the $C$ for cluster. The
-coarsening function $\varphi$ induces an equivalence relation
-$\sim _\varphi$ on $\mathbf{V}_{k}$ where $V_i \sim_\varphi V_j$ iff
-$\varphi (V_i) = \varphi (V_j)$, i.e. both nodes map to the same
-cluster. In this cluster model we would find $\varphi\mathbf{V}_{k}$.
-The coarsened / cluster nodes would be
-$[V_{i}]_{\varphi}=\{V_j \in \mathcal{V}:V_j \sim_{\varphi} V_i\}$, the
-equivalence class of nodes $[V_i]_{\varphi}$, or simply $[V_i]$ if
-$\varphi$ is clear from the context. These clusters can be relabled and
-reindexed to $C_a = [V_i]_{\varphi}$ for legibility. The edges in
-$\varphi G_{k}=G_{k}^{C}$ are then
-$E^{\varphi}_{[i][j]}=[V_i]\rightarrow [V_j]=C_a \rightarrow C_b=E^{C}_{ab}$.
-Choosing to use the $C$ or $\varphi$ syntax depends on the context - are
-we mainly discussing the cluster model $G_k^C$ or the processes of
-coarsening $\varphi G_{k}$? There is also the *causal degradation*
-produced by $\varphi$, which we denote as $\mathrm{deg}_\varphi$
-generally, $\mathrm{deg}_\varphi({G_k})$ as applied to a particular
-model, and ${\mathcal{L}_i}\text{-}\mathrm{deg}_\varphi(G_k)$ to specify
-a particular level of the causal hierarchy,
-$\mathcal{L}_i:i\in \{1,2,3\}$.
-
-A measure of *causal consistency* is also computed, but this is between
-two models, rather than under the process of a clustering. This will be
-denoted as ${\mathcal{L}_{i}}\text{-}\mathrm{d}_{xy}$ or
-${\mathcal{L}_{i}}\text{-}\mathrm{d}$ if symmetric, so where
-${\mathcal{L}_{i}}\text{-}\mathrm{d}_{xy}(G_a,G_b)={\mathcal{L}_{i}}\text{-}\operatorname{d}_{xy}(G_b,G_a)$.
-
-Thought: There is also the graph surgery notation $G_{x\rightarrow y}$
-for the adjusted graph for estimating $P(y|\operatorname{do}(x))$, might
-be nicer even as $G_{y \leftarrow x}$. This works nicer having lowercase
-$x,y$ as the nodes, rather than the $V_i$ notation...but it can still be
-$G_{X \rightarrow Y}$ or $G_{v_{i}\rightarrow v_{j}}$.
-
-Notation for adjustment sets? Things like that?
-
-The paper above with the snip from uses a hard (fix a value)
-intervention and a soft (fix a set of values) / stochastic intervention
-with $\mathcal{I}_X$.
 
 
 # Theory: Causal consistency between models
@@ -161,16 +64,16 @@ Good paper on projections and preservation of causal quantities under
 them:
 https://www-sciencedirect-com.ezproxy.lib.uts.edu.au/science/article/pii/S0888613X24000951
 
-## Metrics, semimetrics, pseudometrics, dissimilarities
+### Metrics, semimetrics, pseudometrics, dissimilarities
 
-Supposing we have some function $\operatorname{d}(x,y) \rightarrow R$
+Supposing we have some function $\operatorname{d}(x,y) \rightarrow \mathbb{R}$
 
 - **Dissimilarities** are non-negative, symmetric, and zero on the
   diagonal. This is good enough for things like `hclust`.
 - If we add the triangle inequality, we have a **pseudometric**.
 - If we add the iden...we have a **semimetric** (although this language depends on the field.)
 
-## Levels
+## Levels in the causal hierarchy
 
 +---------------------------------+---------------------------------+
 | Causal level                    | Example Statements; $\gamma$    |
@@ -231,22 +134,21 @@ also in the shared vocabulary $\mathcal{S}$, where as the latter asks if
 $x,y \in \mathcal{S}$ are able to be d-separated by some set of
 variables in $G$.
 
-### Causal dissimilarity
+## Causal dissimilarity
 
-Then we define:
+First we define the Jaccard dissimilarity between two sets of statements, with smoothing parameter $\kappa$:
 
-$$\operatorname{d}_{\mathcal{L}_i}(G,H)=1 - J_{\mathcal{L}_i}; J_{\mathcal{L}_i}=\frac{|\hat{\Gamma}_i(G) \ \cap \ \hat{\Gamma}_{i}(H)|}{|\hat{\Gamma}_i(G) \ \cup \ \hat{\Gamma}_{i}(H)|}$$
+$$\operatorname{d}_{J}(A,B)=\frac{|A \vartriangle B|}{|A\cup B | + \kappa}; \kappa =1$$
 
-Or, using the symmetric difference operator, and using restriction
+Then the causal dissimilarity is defined as: 
+
+$$\mathcal{L}_i\text{-}\operatorname{d}(G,H)=\operatorname{d}_{J}(\Gamma_i(G)\!\upharpoonright\!\mathcal{S}, \ \Gamma_i(H)\!\upharpoonright\!\mathcal{S}); \ \mathcal{S}=\mathbf{V}_G \cap \mathbf{V}_H$$
+
+This is using the restriction
 notation, so $\Gamma\!\upharpoonright\!S$ are the statements restricted
 to a set S.
 
-$$\operatorname{d}_{\mathcal{L}_i}(G,H)=\frac{|\ (\Gamma_{i}(G) \ \Delta \ {\Gamma}_{i}(H))\!\upharpoonright\!\mathcal{S}_{GH}\ | }{|\ ({\Gamma}_i(G) \ \cup \ {\Gamma}_{i}(H))\!\upharpoonright\!\mathcal{S}_{GH}\ |}$$
-
-Or, we could look at all the statements, without the $\mathcal{S}$, and
-let $\mathcal{L}_0$ carry that load:
-
-$$\operatorname{d}_{\mathcal{L}_i}(G,H)=\frac{|{\Gamma}_i(G) \ \Delta \ {\Gamma}_{i}(H)|}{|{\Gamma}_i(G) \ \cup \ {\Gamma}_{i}(H)|}$$
+#### An alternative framing using projections
 
 It might be easier to use the latent projection notation. A latent
 projection of a graph $G$ onto a set of nodes $\mathcal{S}$ is
@@ -254,24 +156,28 @@ $\pi_{\mathcal{S}}(G)$ and preserves $\mathcal{L}_{1,2}$ statements. L1
 is Verma and Pearls theorem, for disjoint X, Y, Z, X *\|* Y \| Z is
 d-separated in G iff m-separated in $\pi_{\mathcal{S}}(G)$. So
 $\Gamma_{1}(G)\upharpoonright \mathcal{S}$, the statements restricted to
-S, is $\pi_{\mathcal{S}}(G)$ exactly (get ref) - well so some claim. However, that has not proven to be the case with the implementation here. Using the restrction to a set of statements instead of the projection method. 
+S, is $\pi_{\mathcal{S}}(G)$ exactly (get ref) - well so some claim. However, that has not proven to be the case with the implementation here. Using the restriction to a set of statements instead of the projection method. 
 
-Key to the implementation is the choice of what statement to include in
-$\Gamma_i$, and how then to restrict this to the possible shared
-statements between the models $\hat{\Gamma}_{i}$.
 
-### Causal degradation
+## Causal degradation
 
 A similar use of $\Gamma_{i}$ can be used to examine the possible loss
 of $\mathcal{L}_i$ claims under some coarsening of graph through the
 clustering of nodes. One way this can happen when the coarsening divides
 the adjustment sets of some pair of variables into different clusters.
+
+Degradation is defined as: 
+
+$${\mathcal{L}_i}\text{-}{\operatorname{deg}_{\varphi}}(G)=\operatorname{d}_{J}\big( \varphi \Gamma_{i}(G), \ \Gamma_{i}(\varphi G) \big)$$
+
+
+#### A discarded definition of causal degradation: 
+
 Informally this degradation measure counts the proportion of
 $\mathcal{L}_i$ claims in the CDAG that have no potential surrogate
 claim in the fine grained DAG. More formally, we define:
 
 $$\varphi\text{-}\operatorname{deg}_{\mathcal{L}_i}(G)=\frac{|\ \{ [\gamma]_{\varphi} \in \Gamma_{i}(\varphi G): \nexists \ \eta \in \Gamma_i(G) \text{ s.t. } \varphi(\eta) = [\gamma]_{\varphi} \}\ |}{|\ \varphi\Gamma_{i}(G) \cup  \Gamma_{i}(\varphi G)  |}$$
-
 
 
 # Defining dissimilarity functions
@@ -288,7 +194,7 @@ L2_d <- partial(
 
 ```
 
-# Vignettes
+# Vignettes on new measures
 
 To articulate some of the theory and the new metrics.
 
@@ -1040,7 +946,7 @@ code_node_measurability <- function(node) {
         node == "S.Act.Fb" ~ "L",
         node == "S.Act.Fb.Post" ~ "L",
         str_detect(node, "^S\\.Act") ~ "PO", 
-        str_detect(node, "^S\\.Kn") ~ "O", # Changed to observable 
+        str_detect(node, "^S\\.Kn") ~ "O", # Forced to O for simulation
         str_detect(node, "^S") ~ "L", 
         # Help
         node == "H.AI.Agent" ~ "O", # within system tool 
@@ -3240,6 +3146,27 @@ grouped_cdags |>
 ```
 
 ``` {r}
+pg0 <- plot_latent_clusters_merged(
+    grouped_cdags$C2a$models, label = T) +
+    scale_y_continuous(limits = c(-1, 10))+
+    # scale_y_continuous(limits = c(-0.5, 10))+
+    theme(
+        panel.border = element_rect(
+            colour = grouped_cdags$C2a$colour, 
+            fill = NA, 
+            linewidth = 2)) +
+    ggtitle("")
+pg0
+
+ggsave(
+    str_c("figures/projCDAG-labelled-", grouped_cdags$C2a$name,".png"), 
+        plot = pg0,
+        width = 6, height = 4,
+        units = "in")
+```
+
+
+``` {r}
 pg1 <- plot_latent_clusters_merged(
     grouped_cdags$C1plus2$models, label = T) +
     scale_y_continuous(limits = c(-1, 10))+
@@ -4171,7 +4098,6 @@ ground_truth_error_estimate <-
     pull(se) |> 
     max(na.rm = T)
 
-
 est_to_plot <- 
     all_simulation_estimates |>
     mutate(estimated_ground_truth = is.nan(estimate) & method == "Ground truth") |> 
@@ -4189,27 +4115,13 @@ est_to_plot <-
             estimate - estimate[method == "Ground truth"]) |> 
     ungroup() 
 
-    # 
-    # mutate(ogDAG = DAG) |> 
-    # mutate(DAG = if_else(estimated_ground_truth & DAG == "Ground Truth",
-    #                      "Ground Truth (est)",
-    #                      DAG) |> 
-    #            factor(levels = c(
-    #                "Ground Truth",
-    #                "Ground Truth (est)",
-    #                "Expert DAG",
-    #                "Learned DAG",
-    #                "Learned PAG"
-    #            )))
     
 pal_cols <- palette.colors()
 
 ```
 
 ```{r plotting-individual-simulation-results}
-# Would be nice to replicate this, but group 
-# models into those identifiable and those not
-# Maybe change this to abs effect?
+
 est_to_plot |> 
     filter(!estimated_ground_truth) |>
     mutate(method = method |>
@@ -4262,11 +4174,6 @@ est_to_plot_grouped <-
         TRUE ~ "Identifiable models:\n"
         )) |> 
     ungroup() |> 
-    # filter(DAG %in% c(
-    #     "Learned DAG",
-    #     "Learned PAG",
-    #     "Ground Truth",
-    #     "Expert DAG")) |>
     group_by(model_group) |> 
     mutate(model_group_list = str_c(
         unique(model_group), 
@@ -4676,6 +4583,84 @@ tanglegram(dend1 = dend_perfect,
 
 
 # Appendices
+
+
+## Notation
+
+We will use curvy uppercase ($\mathcal{M,G,V,E}$) script for sets across
+all the models, $\mathbf{BOLD}$ uppercase for sets, and $U,P,P,E,R$ case
+standard for instances in the models. Lowercase like $v$ will be
+reserved for imagining actual values (so a node taking on a particular
+value).
+
+The models are indexed as $\mathcal{M}=\{M_1,M_2,\dots,M_8 \}$ with
+their corresponding graphical form as
+$\mathcal{G}=\{G_1,G_2,\dots,G_8 \}$, and each graphical model $G_k$
+comprises of a set of vertices $\mathbf{V}_{k}$ and edges
+$\mathbf{E}_{k}$, so $G_k=\langle\mathbf{V}_{k}, \mathbf{E}_{k}\rangle$,
+with the set of all nodes being $\mathcal{V}$ edges being $\mathcal{E}$.
+$E_{ij}=V_i \rightarrow V_j$ indicates an edge between two nodes, and we
+may use $X=V_i,Y=V_j,Z_k \in \mathbf{V}$ to streamline notation when
+subscripts are getting messy. If two nodes are connected through a
+mediated path, such as $V_i \rightarrow \dots \rightarrow V_j$ then we
+write $\mathrm{De}_{ij}=V_i \rightsquigarrow V_j$ or
+$V_i \in \mathrm{an}(V_j)$. To specify model context for ancestors,
+descendants and mediated parts we subscript the model:
+$V_i \in \mathrm{an}_{G_k}(V_j)$ or $V_i \rightsquigarrow _{G_k} V_j$.
+Nodes $V_i$ are indexed over all models (so across $\mathcal{V}$), but
+if we want to talk about $V_i$ as it stands in $G_k$ we would use
+$V_{i:G_k}$, and likewise for an edge $E_{ij:G_k}$ residing in the
+context of model $G_k$.
+
+Alternate notation for parents: $\{\mathrm{pa}_X \}$
+
+To describe some of the features of DAGs we will examine the set of
+independence relationships in the models as well.
+
+We will also be applying coarsening functions to create cluster DAGs. A
+typical coarsening functions $\varphi$ is applied to the graph, and
+within it all the nodes and edges. So
+$\varphi (G_{k})=\varphi G_{k}=\langle\varphi\mathbf{V}_{k},\varphi\mathbf{E}_{k}\rangle=\langle[\mathbf{V}_k]_{\varphi},[\mathbf{E_k}]_{\varphi}\rangle$,
+which will also refer to as a new cluster model
+$G^C_{k}=\varphi G_k=\langle\mathbf{V}^{C}_{k},\mathbf{E}^{C}_{k}\rangle$
+for slightly cleaner notation, and including the $C$ for cluster. The
+coarsening function $\varphi$ induces an equivalence relation
+$\sim _\varphi$ on $\mathbf{V}_{k}$ where $V_i \sim_\varphi V_j$ iff
+$\varphi (V_i) = \varphi (V_j)$, i.e. both nodes map to the same
+cluster. In this cluster model we would find $\varphi\mathbf{V}_{k}$.
+The coarsened / cluster nodes would be
+$[V_{i}]_{\varphi}=\{V_j \in \mathcal{V}:V_j \sim_{\varphi} V_i\}$, the
+equivalence class of nodes $[V_i]_{\varphi}$, or simply $[V_i]$ if
+$\varphi$ is clear from the context. These clusters can be relabled and
+reindexed to $C_a = [V_i]_{\varphi}$ for legibility. The edges in
+$\varphi G_{k}=G_{k}^{C}$ are then
+$E^{\varphi}_{[i][j]}=[V_i]\rightarrow [V_j]=C_a \rightarrow C_b=E^{C}_{ab}$.
+Choosing to use the $C$ or $\varphi$ syntax depends on the context - are
+we mainly discussing the cluster model $G_k^C$ or the processes of
+coarsening $\varphi G_{k}$? There is also the *causal degradation*
+produced by $\varphi$, which we denote as $\mathrm{deg}_\varphi$
+generally, $\mathrm{deg}_\varphi({G_k})$ as applied to a particular
+model, and ${\mathcal{L}_i}\text{-}\mathrm{deg}_\varphi(G_k)$ to specify
+a particular level of the causal hierarchy,
+$\mathcal{L}_i:i\in \{1,2,3\}$.
+
+A measure of *causal consistency* is also computed, but this is between
+two models, rather than under the process of a clustering. This will be
+denoted as ${\mathcal{L}_{i}}\text{-}\mathrm{d}_{xy}$ or
+${\mathcal{L}_{i}}\text{-}\mathrm{d}$ if symmetric, so where
+${\mathcal{L}_{i}}\text{-}\mathrm{d}_{xy}(G_a,G_b)={\mathcal{L}_{i}}\text{-}\operatorname{d}_{xy}(G_b,G_a)$.
+
+Thought: There is also the graph surgery notation $G_{x\rightarrow y}$
+for the adjusted graph for estimating $P(y|\operatorname{do}(x))$, might
+be nicer even as $G_{y \leftarrow x}$. This works nicer having lowercase
+$x,y$ as the nodes, rather than the $V_i$ notation...but it can still be
+$G_{X \rightarrow Y}$ or $G_{v_{i}\rightarrow v_{j}}$.
+
+Notation for adjustment sets? Things like that?
+
+The paper above with the snip from uses a hard (fix a value)
+intervention and a soft (fix a set of values) / stochastic intervention
+with $\mathcal{I}_X$.
 
 ## All models plotted
 
