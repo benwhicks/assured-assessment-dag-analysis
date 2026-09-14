@@ -4343,11 +4343,11 @@ plot_learned_dag_comparisons <- function(M = "M4",
             activate(nodes) |> 
             tidygraph::left_join(
                 merged_coarse_layout |> 
-                    select(name, x, y), by = "name") |> 
+                    select(name, node_type, x, y), by = "name") |> 
             tidygraph::left_join(
                 node_group_nice_name |> 
                     rename(name = node_group), by = "name") |> 
-            mutate(name = nice_name)
+            mutate(name = nice_name) 
     }
     
     g_expert_GCM <- models |> 
@@ -4364,36 +4364,49 @@ plot_learned_dag_comparisons <- function(M = "M4",
         .fetch_and_add_node_info()
     
     obs_node <- gcm_nodelist(g_HC_DAG, as_tibble = FALSE)
-    g_proj_expert_GCM <- gcm_projection(g_expert_GCM, keep_nodes = obs_node)
+    g_proj_expert_GCM <- gcm_projection(
+        g_expert_GCM, keep_nodes = obs_node)
+    
+    g_plotter <- partial(
+        gcm_qplot, 
+        label_size = ls,
+        node_colour_var = "node_type",
+        node_colours = node_type_colours)
     
     return(list(
-        Expert_GCM = gcm_qplot(g_expert_GCM, label_size = ls),
-        Expert_proj_GCM = gcm_qplot(g_proj_expert_GCM, label_size = ls),
-        HC_DAG = gcm_qplot(g_HC_DAG, label_size = ls),
-        ICD_PAG = gcm_qplot(g_ICD_PAG, label_size = ls)
+        Expert_GCM.      = g_plotter(g_expert_GCM),
+        Expert_proj_GCM  = g_plotter(g_proj_expert_GCM),
+        HC_DAG           = g_plotter(g_HC_DAG),
+        ICD_PAG          = g_plotter(g_ICD_PAG)
     ))
 }
-
-
 
 ```
 
 ## Visualising learning of M4
 
 ``` {r}
-pM4 <- plot_learned_dag_comparisons("M4", ls = 3)
-pM4obs <- plot_learned_dag_comparisons("M4", DATA = "Observable", ls = 3)
-pM4$Expert_GCM +
+pM4 <- plot_learned_dag_comparisons("M4", ls = .3)
+pM4obs <- plot_learned_dag_comparisons("M6", DATA = "Observable", 
+                                       ls = .02)
+pM4obs$Expert_GCM +
     scale_x_continuous(expand = c(0.2, 0.2))
+
+ggsave("figures/FIG--M4obs-expert-DAG.png", 
+       pM4obs$Expert_GCM +
+    scale_x_continuous(expand = c(0.1, 0.1)),
+       width = 5, height = 3.5)
+
 ```
 
 ``` {r}
 pM4obs$Expert_proj_GCM +
     scale_x_continuous(expand = c(0.1, 0.1))
 
-ggsave("figures/FIG--M4obs-latent-projection.png", pM4obs$Expert_proj_GCM +
+ggsave("figures/FIG--M4obs-latent-projection.png", 
+       pM4obs$Expert_proj_GCM +
     scale_x_continuous(expand = c(0.1, 0.1)),
-       width = 5, height = 5)
+       width = 5, height = 3.5)
 ```
 
 ``` {r}
@@ -4403,7 +4416,7 @@ pM4obs$ICD_PAG +
 ggsave("figures/FIG--M4obs-ICD-PAG.png", 
        pM4obs$ICD_PAG +
     scale_x_continuous(expand = c(0.1, 0.1)),
-       width = 5, height = 5)
+       width = 5, height = 3.5)
 ```
 
 ``` {r}
@@ -4412,7 +4425,7 @@ pM4obs$HC_DAG +
 
 ggsave("figures/FIG--M4obs-HC-DAG.png", pM4obs$HC_DAG +
     scale_x_continuous(expand = c(0.1, 0.1)),
-       width = 5, height = 5)
+       width = 5, height = 3.5)
 ```
 
 

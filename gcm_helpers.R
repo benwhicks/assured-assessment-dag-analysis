@@ -251,18 +251,22 @@ gcm_split_types <- function(g, sep = ";") {
 #'   than disappear.
 
 gcm_qplot <- function(g,
-                      layout          = "sugiyama",
-                      layout_df = NULL, # contains name, x, y
-                      node_size       = 6,
-                      label_size      = 3,
-                      arrow_mm        = 2.5,
-                      arc             = 0.25,
-                      mark_size       = 1.9,
-                      mark_offset     = NULL,
-                      edge_weight_var = NULL,
-                      alpha_range     = c(0.3, 0.95),
-                      flat_alpha      = 0.9,
-                      title           = NULL) {
+                      layout           = "sugiyama",
+                      layout_df        = NULL, # contains name, x, y
+                      node_size        = 6,
+                      label_size       = 3,
+                      arrow_mm         = 2.5,
+                      arc              = 0.25,
+                      mark_size        = 1.9,
+                      mark_offset      = NULL,
+                      edge_weight_var  = NULL,
+                      node_colour_var  = NULL,
+                      node_colours     = NULL,
+                      node_colour_name = NULL,
+                      na_colour        = "grey85",
+                      alpha_range      = c(0.3, 0.95),
+                      flat_alpha       = 0.9,
+                      title            = NULL) {
     
     if (inherits(g, "dagitty")) g <- dagitty_to_tidygraph(g)
     node_df <- tibble::as_tibble(g, active = "nodes")
@@ -300,6 +304,42 @@ gcm_qplot <- function(g,
             mutate(.w = tidyr::replace_na(.w, min(.w, na.rm = TRUE)))
     }
     
+    ## ---- resolve the node colour column --------------------------------------
+    ## Staged into `.nc` for the same reason `.w` is staged: create_layout() below
+    ## rebuilds the node table, and a fixed column name survives that cleanly.
+    use_nc <- FALSE
+    
+    if (!is.null(node_colour_var)) {
+        if (!node_colour_var %in% names(node_df)) {
+            warning("node_colour_var '", node_colour_var,
+                    "' not found in node data; using flat colour")
+        } else {
+            use_nc <- TRUE
+        }
+    }
+    
+    if (use_nc) {
+        g <- g |> activate(nodes) |> mutate(.nc = .data[[node_colour_var]])
+        
+        ## a named palette implies categories, so coerce rather than fail later
+        if (!is.null(node_colours) && is.numeric(tibble::as_tibble(g, active = "nodes")$.nc)) {
+            warning("node_colours supplied for a numeric '", node_colour_var,
+                    "'; treating it as discrete")
+            g <- g |> activate(nodes) |> mutate(.nc = as.character(.nc))
+        }
+        node_df <- tibble::as_tibble(g, active = "nodes")
+        
+        if (!is.null(node_colours)) {
+            uncovered <- setdiff(unique(as.character(node_df$.nc)),
+                                 names(unlist(node_colours)))
+            uncovered <- uncovered[!is.na(uncovered)]
+            if (length(uncovered))
+                warning("no colour supplied for: ",
+                        paste(uncovered, collapse = ", "),
+                        " - falling back to na_colour")
+        }
+    }
+    
     ## ---- parse endpoint marks ------------------------------------------------
     mark_of <- function(ch) dplyr::case_when(
         ch %in% c("<", ">") ~ "arrow",
@@ -332,7 +372,7 @@ gcm_qplot <- function(g,
     ## ---- layout --------------------------------------------------------------
     
     if (!is.null(layout_df)) {
-        node_df <- node_df |> 
+        node_df <- node_df |>
             left_join(layout_df |> distinct(name, x, y),
                       by = "name")
     }
@@ -350,7 +390,7 @@ gcm_qplot <- function(g,
                len = sqrt((x2 - x1)^2 + (y2 - y1)^2)) |>
         filter(len > 0)
     
-    off <- if (is.null(mark_offset)) 0.15 * stats::median(seg$len) else mark_offset
+    off <- if (is.null(mark_offset)) 0.1 * stats::median(seg$len) else mark_offset
     
     marks <- bind_rows(
         seg |> filter(.m_from == "circle") |>
@@ -385,6 +425,27 @@ gcm_qplot <- function(g,
         scale_alpha_identity()
     }
     
+    ## node colour: mapped or flat. `colour` is free here - the edge layers use
+    ## the separate `edge_colour` aesthetic, so the two scales never collide.
+    node_layer <- if (use_nc) {
+        geom_node_point(aes(colour = .nc), size = node_size)
+    } else {
+        geom_node_point(size = node_size, colour = "grey85")
+    }
+    
+    nc_name <- if (is.null(node_colour_name)) node_colour_var else node_colour_name
+    
+    colour_node <- if (!use_nc) {
+        NULL
+    } else if (!is.null(node_colours)) {
+        scale_colour_manual(values = unlist(node_colours),
+                            name = nc_name, na.value = na_colour)
+    } else if (is.numeric(node_df$.nc)) {
+        scale_colour_viridis_c(name = nc_name, na.value = na_colour)
+    } else {
+        scale_colour_viridis_d(name = nc_name, na.value = na_colour)
+    }
+    
     ggraph(lay) +
         link("none") + link("last") + link("first") +
         ## bidirected arced, so it separates from a co-existing directed edge
@@ -397,9 +458,9 @@ gcm_qplot <- function(g,
         geom_point(data = marks, aes(x = mx, y = my, alpha = .w),
                    shape = 21, fill = "white", colour = "grey30",
                    size = mark_size, stroke = 0.6, inherit.aes = FALSE) +
-        geom_node_point(size = node_size, colour = "grey85") +
+        node_layer +
         geom_node_text(aes(label = name), size = label_size) +
-        alpha_edge + alpha_mark +
+        alpha_edge + alpha_mark + colour_node +
         scale_edge_colour_manual(values = c(directed = "grey10", bidirected = "grey30",
                                             undirected = "grey30", partial = "grey30"),
                                  guide = "none") +
@@ -408,9 +469,9 @@ gcm_qplot <- function(g,
                                    guide = "none") +
         labs(title = title) +
         theme_graph(base_family = "sans") +
-        theme(plot.margin = margin(2, 2, 2, 2))
+        theme(plot.margin = margin(2, 2, 2, 2),
+              legend.position = "none")
 }
-
 
 ## --- checks -----------------------------------------------------------------
 ## g <- tbl_graph(nodes = tibble(name = c("CD.Str","Grade","S.Att","S.Kn")),
