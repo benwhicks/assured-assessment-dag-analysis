@@ -2002,7 +2002,7 @@ p_coarse_show_and_save <- function(n, title = T){
 ```
 
 ``` {r}
-p_coarse_show_and_save(2, title = F)
+p_coarse_show_and_save(7, title = F)
 ```
 
 ## Visualising cluster DAGs
