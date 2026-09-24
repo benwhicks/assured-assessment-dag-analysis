@@ -390,22 +390,30 @@ dLstringC1_C2 <- str_c(
                d.L2.C1_C2) /3, 2)
 )
 
-p.vignette.diss <- (
-    vntPlotC1W +
-                        geom_richtext(
-        data = data.frame(x = 1, y = 0.3),
-        aes(x = x, y = y, label = dLstringC1_C1W),
-        fill = NA, label.color = "lightgrey",   # no box/border around the text
-        inherit.aes = FALSE)
-    ) +
+p.vignette.diss <- 
     (vntPlotC1 + 
-        annotate("text", x = 1, y = 0.3, label = "Initial DAG")) + 
+         annotate("text", x = 1, y = 0.3, label = "Initial DAG") +
+         theme(
+             panel.border = element_rect(colour = "grey20", fill=NA, linewidth=1)
+         )) + 
+    (vntPlotC1W +
+         geom_richtext(
+             data = data.frame(x = 1, y = 0.3),
+             aes(x = x, y = y, label = dLstringC1_C1W),
+             fill = NA, label.color = "lightgrey",   # no box/border around the text
+             inherit.aes = FALSE) +
+         theme(
+             panel.border = element_rect(colour = "grey50", linetype = 3,fill=NA, linewidth=1)
+         )
+    ) +
     (vntPlotC2 +                                                                                      geom_richtext(
         data = data.frame(x = 1, y = 0.3),
         aes(x = x, y = y, label = dLstringC1_C2),
         fill = NA, label.color = "lightgrey",   # no box/border around the text
-        inherit.aes = FALSE))
-
+        inherit.aes = FALSE) +
+         theme(
+             panel.border = element_rect(colour = "grey50", linetype = 3,fill=NA, linewidth=1)))
+     
 ggsave("figures/fig--vignette-causal-dissimilarity.png", 
        height = 4, width = 12,
        plot = p.vignette.diss)
@@ -441,10 +449,21 @@ variables by their first letter.
 
 ```{r figure-L-degradation-vignette, fig.height=3}
 p.vignette.deg <- 
-    (vntPlotF1A ) + 
-    (vntPlotC1 + 
-        annotate("text", x = 1, y = 0.3, label = "Cluster DAG")) + 
-    (vntPlotF1B)
+    (
+        vntPlotC1 + 
+            annotate("text", x = 1, y = 0.3, label = "Cluster DAG") +
+            theme(
+                panel.border = element_rect(
+                    colour = "grey20", linetype = 1,fill=NA, linewidth=1))
+    ) + (
+        vntPlotF1A  +
+            theme(
+                panel.border = element_rect(colour = "grey50", linetype = 3,fill=NA, linewidth=1))
+    ) + (
+        vntPlotF1B +
+            theme(
+                panel.border = element_rect(colour = "grey50", linetype = 3,fill=NA, linewidth=1))
+    )
 
 ggsave("figures/fig--vignette-causal-degradation.png", 
        height = 4, width = 12,
